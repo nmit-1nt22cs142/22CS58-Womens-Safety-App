@@ -3,13 +3,15 @@ import { createStackNavigator } from "@react-navigation/stack";
 
 import LoginScreen from "../screens/LoginScreen";
 import RegistrationScreen from "../screens/RegistrationScreen";
-
 import HomeScreen from "../screens/HomeScreen";
 import CommunityScreen from "../screens/CommunityScreen";
 import GuardianScreen from "../screens/GuardianScreen";
 import HelpScreen from "../screens/HelpScreen";
 import SettingsScreen from "../screens/SettingsScreen";
-
+import GeofencingScreen from "../screens/GeofencingScreen";
+import AddRouteScreen from "../screens/AddRouteScreen";
+import TrackRouteScreen from "../screens/TrackRouteScreen";
+import GuardianJourneyViewScreen from '../screens/GuardianJourneyViewScreen';
 import MainLayout from "../components/ui/MainLayout";
 
 const Stack = createStackNavigator();
@@ -27,59 +29,26 @@ export default function AppNavigator() {
     <Stack.Navigator
       initialRouteName="Login"
       screenOptions={{
-        headerStyle: { backgroundColor: "#007AFF" },
-        headerTintColor: "#fff",
-        headerTitleStyle: { fontWeight: "bold" },
+        headerShown: false,
+        cardStyle: { backgroundColor: '#fff' },
       }}
     >
-      {/* LOGIN */}
-      <Stack.Screen
-        name="Login"
-        component={LoginScreen}
-        options={{ headerShown: false }}
-      />
+      {/* AUTH SCREENS */}
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Registration" component={RegistrationScreen} />
 
-      {/* REGISTRATION */}
-      <Stack.Screen
-        name="Registration"
-        component={RegistrationScreen}
-        options={{ title: "Create Account" }}
-      />
+      {/* MAIN APP SCREENS WITH LAYOUT */}
+      <Stack.Screen name="Home" component={withLayout(HomeScreen)} />
+      <Stack.Screen name="Community" component={withLayout(CommunityScreen)} />
+      <Stack.Screen name="Guardian" component={withLayout(GuardianScreen)} />
+      <Stack.Screen name="Help" component={withLayout(HelpScreen)} />
+      <Stack.Screen name="Settings" component={withLayout(SettingsScreen)} />
 
-      {/* HOME (wrapped in MainLayout) */}
-      <Stack.Screen
-        name="Home"
-        component={withLayout(HomeScreen)}
-        options={{ headerShown: false }}
-      />
-
-      {/* COMMUNITY */}
-      <Stack.Screen
-        name="Community"
-        component={withLayout(CommunityScreen)}
-        options={{ headerShown: false }}
-      />
-
-      {/* GUARDIAN */}
-      <Stack.Screen
-        name="Guardian"
-        component={withLayout(GuardianScreen)}
-        options={{ headerShown: false }}
-      />
-
-      {/* HELP */}
-      <Stack.Screen
-        name="Help"
-        component={withLayout(HelpScreen)}
-        options={{ headerShown: false }}
-      />
-
-      {/* SETTINGS */}
-      <Stack.Screen
-        name="Settings"
-        component={withLayout(SettingsScreen)}
-        options={{ headerShown: false }}
-      />
+      {/* GEOFENCING SCREENS WITHOUT LAYOUT */}
+      <Stack.Screen name="Geofencing" component={GeofencingScreen} />
+      <Stack.Screen name="AddRoute" component={AddRouteScreen} />
+      <Stack.Screen name="TrackRoute" component={TrackRouteScreen} />
+      <Stack.Screen name="GuardianJourneyView" component={GuardianJourneyViewScreen} />
     </Stack.Navigator>
   );
 }

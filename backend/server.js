@@ -5,7 +5,8 @@ require('dotenv').config();
 
 const aadhaarRoutes = require('./routes/aadhaarRoutes');
 const authRoutes = require('./routes/authRoutes');
-const guardianRoutes = require('./routes/guardianRoutes'); // ⭐ NEW
+const guardianRoutes = require('./routes/guardianRoutes');
+const routeRoutes = require('./routes/routeRoutes'); // ⭐ NEW
 
 const app = express();
 
@@ -22,7 +23,8 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // Routes
 app.use('/api/aadhaar', aadhaarRoutes);
 app.use('/api/auth', authRoutes);
-app.use('/api/guardian', guardianRoutes); // ⭐ NEW
+app.use('/api/guardian', guardianRoutes);
+app.use('/api/routes', routeRoutes); // ⭐ NEW
 
 // Health check route
 app.get('/', (req, res) => {

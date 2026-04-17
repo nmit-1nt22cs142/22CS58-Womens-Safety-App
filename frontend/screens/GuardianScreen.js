@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getUserJourneyDetails } from '../services/api';
 import { 
   View, 
   Text, 
@@ -99,13 +100,12 @@ export default function GuardianScreen({ route, navigation }) {
     }
   };
 
-  const handlePersonClick = (person) => {
-    // Navigate to person detail screen (to be implemented later)
-    Alert.alert(
-      person.name,
-      `Guardian details for ${person.name}\n\nThis feature will show:\n- User location history\n- Alert history\n- Contact information\n\n(Coming soon!)`,
-      [{ text: 'OK' }]
-    );
+const handlePersonClick = (person) => {
+    navigation.navigate('GuardianJourneyView', { 
+      userId: person.id, 
+      userName: person.name,
+      token 
+    });
   };
 
   if (loading) {

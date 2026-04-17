@@ -2,7 +2,7 @@ import axios from 'axios';
 import { Platform } from 'react-native';
 
 // ⚠️ IMPORTANT: Update this IP address with your computer's actual IP
-const YOUR_COMPUTER_IP = '192.168.251.194'; // 👈 UPDATE THIS!
+const YOUR_COMPUTER_IP = '192.168.0.107'; // 👈 UPDATE THIS!
 
 const getBaseURL = () => {
   if (Platform.OS === 'web') {
@@ -255,6 +255,190 @@ export const markAlertAsSeen = async (alertId, token) => {
 export const getUserDetails = async (userId, token) => {
   try {
     const response = await api.get(`/guardian/user/${userId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+// ============================================
+// Route/Geofencing APIs
+// ============================================
+
+// Create route
+export const createRoute = async (routeData, token) => {
+  try {
+    const response = await api.post('/routes', routeData, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+// Get user routes
+export const getUserRoutes = async (token) => {
+  try {
+    const response = await api.get('/routes', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+// Get route by ID
+export const getRouteById = async (routeId, token) => {
+  try {
+    const response = await api.get(`/routes/${routeId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+// Delete route
+export const deleteRoute = async (routeId, token) => {
+  try {
+    const response = await api.delete(`/routes/${routeId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+// Start trip
+export const startTrip = async (routeId, token) => {
+  try {
+    const response = await api.post('/routes/trip/start', 
+      { routeId },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+// Save GPS point
+export const saveGPSPoint = async (tripId, latitude, longitude, accuracy, token) => {
+  try {
+    const response = await api.post('/routes/trip/gps-point',
+      { tripId, latitude, longitude, accuracy },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+// Log deviation alert
+export const logDeviationAlert = async (tripId, deviationPercentage, latitude, longitude, userResponse, token) => {
+  try {
+    const response = await api.post('/routes/trip/deviation',
+      { tripId, deviationPercentage, latitude, longitude, userResponse },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+// End trip
+export const endTrip = async (tripId, token) => {
+  try {
+    const response = await api.post('/routes/trip/end',
+      { tripId },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+// Get guardian active journeys
+export const getGuardianActiveJourneys = async (token) => {
+  try {
+    const response = await api.get('/routes/guardian/active-journeys', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+// Get guardian completed journeys
+export const getGuardianCompletedJourneys = async (token) => {
+  try {
+    const response = await api.get('/routes/guardian/completed-journeys', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+// Get user journey details (for guardian)
+export const getUserJourneyDetails = async (userId, token) => {
+  try {
+    const response = await api.get(`/routes/guardian/user/${userId}/journeys`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+// Get trip GPS points
+export const getTripGPSPoints = async (tripId, token) => {
+  try {
+    const response = await api.get(`/routes/guardian/trip/${tripId}/gps-points`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }

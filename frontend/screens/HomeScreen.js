@@ -144,6 +144,15 @@ const HomeScreen = ({ navigation, route }) => {
           {loading ? 'SENDING...' : 'DANGER'}
         </Text>
       </TouchableOpacity>
+
+      {/* ROUTES BUTTON */}
+      <TouchableOpacity 
+        style={styles.routesButton}
+        onPress={() => navigation.navigate('Geofencing')}
+      >
+        <Ionicons name="map" size={24} color="#fff" />
+        <Text style={styles.routesButtonText}>My Routes</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 };
@@ -284,5 +293,22 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     backgroundColor: '#ccc',
     opacity: 0.7,
+  },
+  routesButton: {
+    backgroundColor: '#007AFF',
+    marginTop: 15,
+    paddingVertical: 20,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    width: '100%',
+    elevation: 5,
+    gap: 10,
+  },
+  routesButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 });

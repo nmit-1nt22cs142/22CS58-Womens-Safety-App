@@ -11,7 +11,20 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.womensafety.app"
+      "bundleIdentifier": "com.womensafety.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "This app needs access to your location to track your routes and ensure your safety.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs access to your location to track your routes and notify your guardians in case of emergencies.",
+        "NSLocationAlwaysUsageDescription": "This app needs access to your location to track your routes in the background for safety monitoring."
+      }
+    },
+    "android": {
+      "package": "com.womensafety.app",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -21,8 +34,15 @@
         "projectId": "ab159fef-092a-4966-872f-0cc0981901d1"
       }
     },
-    "android": {
-      "package": "com.womensafety.app"
-    }
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Women Safety App to use your location for route tracking and safety monitoring.",
+          "locationAlwaysPermission": "Allow Women Safety App to use your location in the background for continuous safety monitoring.",
+          "locationWhenInUsePermission": "Allow Women Safety App to use your location while using the app for route tracking."
+        }
+      ]
+    ]
   }
 }
