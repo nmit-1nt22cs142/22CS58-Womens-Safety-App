@@ -140,7 +140,7 @@ export default function AddRouteScreen({ navigation, route }) {
       if (response.success) {
         Alert.alert(
           'Success',
-          'Route saved! Complete 3 trips to fully learn this route.',
+          'Route saved! Your route has been mapped using Google Directions.',
           [
             {
               text: 'OK',

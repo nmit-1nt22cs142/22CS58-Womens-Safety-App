@@ -269,72 +269,12 @@ export const getUserDetails = async (userId, token) => {
 // Route/Geofencing APIs
 // ============================================
 
-// Create route
-export const createRoute = async (routeData, token) => {
+// Start journey (on-demand — no saved route needed)
+export const startTrip = async (fromAddress, toAddress, fromLatitude, fromLongitude, toLatitude, toLongitude, token) => {
   try {
-    const response = await api.post('/routes', routeData, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    return response.data;
-  } catch (error) {
-    throw error.response?.data || { success: false, message: 'Network error' };
-  }
-};
-
-// Get user routes
-export const getUserRoutes = async (token) => {
-  try {
-    const response = await api.get('/routes', {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    return response.data;
-  } catch (error) {
-    throw error.response?.data || { success: false, message: 'Network error' };
-  }
-};
-
-// Get route by ID
-export const getRouteById = async (routeId, token) => {
-  try {
-    const response = await api.get(`/routes/${routeId}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    return response.data;
-  } catch (error) {
-    throw error.response?.data || { success: false, message: 'Network error' };
-  }
-};
-
-// Delete route
-export const deleteRoute = async (routeId, token) => {
-  try {
-    const response = await api.delete(`/routes/${routeId}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    return response.data;
-  } catch (error) {
-    throw error.response?.data || { success: false, message: 'Network error' };
-  }
-};
-
-// Start trip
-export const startTrip = async (routeId, token) => {
-  try {
-    const response = await api.post('/routes/trip/start', 
-      { routeId },
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      }
+    const response = await api.post('/routes/trip/start',
+      { fromAddress, toAddress, fromLatitude, fromLongitude, toLatitude, toLongitude },
+      { headers: { 'Authorization': `Bearer ${token}` } }
     );
     return response.data;
   } catch (error) {

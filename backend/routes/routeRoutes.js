@@ -1,10 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const {
-  createRoute,
-  getUserRoutes,
-  getRouteById,
-  deleteRoute,
   startTrip,
   saveGPSPoint,
   logDeviationAlert,
@@ -19,13 +15,7 @@ const authMiddleware = require('../middleware/authMiddleware');
 // All routes require authentication
 router.use(authMiddleware);
 
-// Route management
-router.post('/', createRoute);
-router.get('/', getUserRoutes);
-router.get('/:routeId', getRouteById);
-router.delete('/:routeId', deleteRoute);
-
-// Trip management
+// Trip management (on-demand journeys)
 router.post('/trip/start', startTrip);
 router.post('/trip/gps-point', saveGPSPoint);
 router.post('/trip/deviation', logDeviationAlert);

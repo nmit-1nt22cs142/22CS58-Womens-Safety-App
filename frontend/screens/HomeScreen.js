@@ -145,13 +145,13 @@ const HomeScreen = ({ navigation, route }) => {
         </Text>
       </TouchableOpacity>
 
-      {/* ROUTES BUTTON */}
+      {/* START JOURNEY BUTTON */}
       <TouchableOpacity 
         style={styles.routesButton}
-        onPress={() => navigation.navigate('Geofencing')}
+        onPress={() => navigation.navigate('StartJourney')}
       >
-        <Ionicons name="map" size={24} color="#fff" />
-        <Text style={styles.routesButtonText}>My Routes</Text>
+        <Ionicons name="navigate" size={24} color="#fff" />
+        <Text style={styles.routesButtonText}>Start Journey</Text>
       </TouchableOpacity>
     </ScrollView>
   );

@@ -9,7 +9,7 @@ import GuardianScreen from "../screens/GuardianScreen";
 import HelpScreen from "../screens/HelpScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import GeofencingScreen from "../screens/GeofencingScreen";
-import AddRouteScreen from "../screens/AddRouteScreen";
+import StartJourneyScreen from "../screens/StartJourneyScreen";
 import TrackRouteScreen from "../screens/TrackRouteScreen";
 import GuardianJourneyViewScreen from '../screens/GuardianJourneyViewScreen';
 import MainLayout from "../components/ui/MainLayout";
@@ -44,9 +44,8 @@ export default function AppNavigator() {
       <Stack.Screen name="Help" component={withLayout(HelpScreen)} />
       <Stack.Screen name="Settings" component={withLayout(SettingsScreen)} />
 
-      {/* GEOFENCING SCREENS WITHOUT LAYOUT */}
-      <Stack.Screen name="Geofencing" component={GeofencingScreen} />
-      <Stack.Screen name="AddRoute" component={AddRouteScreen} />
+      {/* JOURNEY SCREENS WITHOUT LAYOUT */}
+      <Stack.Screen name="StartJourney" component={StartJourneyScreen} />
       <Stack.Screen name="TrackRoute" component={TrackRouteScreen} />
       <Stack.Screen name="GuardianJourneyView" component={GuardianJourneyViewScreen} />
     </Stack.Navigator>

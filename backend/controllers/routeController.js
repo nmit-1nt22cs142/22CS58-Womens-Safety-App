@@ -1,205 +1,94 @@
 const db = require('../config/db');
+const https = require('https');
 
 // ============================================
-// CREATE ROUTE
+// DECODE GOOGLE ENCODED POLYLINE
 // ============================================
-const createRoute = async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const {
-      fromAddress,
-      toAddress,
-      fromLatitude,
-      fromLongitude,
-      toLatitude,
-      toLongitude
-    } = req.body;
+const decodePolyline = (encoded) => {
+  const points = [];
+  let index = 0, lat = 0, lng = 0;
+  while (index < encoded.length) {
+    let shift = 0, result = 0, b;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+    shift = 0; result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+    points.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
+  }
+  return points;
+};
 
-    console.log('📍 Creating route for user:', userId);
-
-    // Validation
-    if (!fromAddress || !toAddress || !fromLatitude || !fromLongitude || !toLatitude || !toLongitude) {
-      return res.status(400).json({
-        success: false,
-        message: 'All route details are required'
+// ============================================
+// FETCH ROAD POLYLINE FROM GOOGLE DIRECTIONS API
+// ============================================
+const fetchGoogleRoutePolyline = (fromLat, fromLng, toLat, toLng) => {
+  return new Promise((resolve, reject) => {
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${fromLat},${fromLng}&destination=${toLat},${toLng}&key=${apiKey}`;
+    https.get(url, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.status === 'OK' && json.routes.length > 0) {
+            resolve(decodePolyline(json.routes[0].overview_polyline.points));
+          } else {
+            reject(new Error('Google Directions API returned: ' + json.status));
+          }
+        } catch (e) { reject(e); }
       });
-    }
-
-    // Insert route
-    const [result] = await db.query(
-      `INSERT INTO routes 
-       (user_id, from_address, to_address, from_latitude, from_longitude, to_latitude, to_longitude) 
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [userId, fromAddress, toAddress, fromLatitude, fromLongitude, toLatitude, toLongitude]
-    );
-
-    console.log('✅ Route created with ID:', result.insertId);
-
-    return res.status(201).json({
-      success: true,
-      message: 'Route created successfully',
-      routeId: result.insertId
-    });
-
-  } catch (error) {
-    console.error('❌ Create route error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Server error'
-    });
-  }
+    }).on('error', reject);
+  });
 };
 
-// ============================================
-// GET USER ROUTES
-// ============================================
-const getUserRoutes = async (req, res) => {
-  try {
-    const userId = req.user.userId;
 
-    const [routes] = await db.query(
-      `SELECT 
-        id,
-        from_address,
-        to_address,
-        from_latitude,
-        from_longitude,
-        to_latitude,
-        to_longitude,
-        geofence_radius,
-        trips_completed,
-        learned_percentage,
-        estimated_time,
-        last_visit,
-        created_at,
-        updated_at
-       FROM routes
-       WHERE user_id = ?
-       ORDER BY created_at DESC`,
-      [userId]
-    );
 
-    console.log('📍 Found routes:', routes.length);
 
-    return res.status(200).json({
-      success: true,
-      routes
-    });
-
-  } catch (error) {
-    console.error('❌ Get routes error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Server error'
-    });
-  }
-};
 
 // ============================================
-// GET ROUTE BY ID
-// ============================================
-const getRouteById = async (req, res) => {
-  try {
-    const { routeId } = req.params;
-    const userId = req.user.userId;
-
-    const [routes] = await db.query(
-      `SELECT * FROM routes WHERE id = ? AND user_id = ?`,
-      [routeId, userId]
-    );
-
-    if (routes.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Route not found'
-      });
-    }
-
-    // Get learned route if exists
-    const [learnedRoute] = await db.query(
-      `SELECT path_json, corridor_json, confidence FROM learned_routes WHERE route_id = ?`,
-      [routeId]
-    );
-
-    const route = {
-      ...routes[0],
-      learnedRoute: learnedRoute.length > 0 ? {
-        path: JSON.parse(learnedRoute[0].path_json || '[]'),
-        corridor: JSON.parse(learnedRoute[0].corridor_json || '[]'),
-        confidence: parseFloat(learnedRoute[0].confidence)
-      } : null
-    };
-
-    return res.status(200).json({
-      success: true,
-      route
-    });
-
-  } catch (error) {
-    console.error('❌ Get route error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Server error'
-    });
-  }
-};
-
-// ============================================
-// DELETE ROUTE
-// ============================================
-const deleteRoute = async (req, res) => {
-  try {
-    const { routeId } = req.params;
-    const userId = req.user.userId;
-
-    await db.query(
-      `DELETE FROM routes WHERE id = ? AND user_id = ?`,
-      [routeId, userId]
-    );
-
-    console.log('✅ Route deleted:', routeId);
-
-    return res.status(200).json({
-      success: true,
-      message: 'Route deleted successfully'
-    });
-
-  } catch (error) {
-    console.error('❌ Delete route error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Server error'
-    });
-  }
-};
-
-// ============================================
-// START TRIP
+// START TRIP  (on-demand — no saved route needed)
 // ============================================
 const startTrip = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { routeId } = req.body;
+    const { fromAddress, toAddress, fromLatitude, fromLongitude, toLatitude, toLongitude } = req.body;
 
-    console.log('🚗 Starting trip for route:', routeId);
-
-    // Verify route exists
-    const [routes] = await db.query(
-      `SELECT * FROM routes WHERE id = ? AND user_id = ?`,
-      [routeId, userId]
-    );
-
-    if (routes.length === 0) {
-      return res.status(404).json({
+    if (!fromAddress || !toAddress || !fromLatitude || !fromLongitude || !toLatitude || !toLongitude) {
+      return res.status(400).json({
         success: false,
-        message: 'Route not found'
+        message: 'All journey details are required'
       });
     }
 
-    // Create trip
+    console.log('🚗 Starting journey for user:', userId, '|', fromAddress, '→', toAddress);
+
+    // Fetch Google road polyline
+    let polyline = [];
+    try {
+      polyline = await fetchGoogleRoutePolyline(fromLatitude, fromLongitude, toLatitude, toLongitude);
+      console.log('✅ Polyline fetched | Points:', polyline.length);
+    } catch (polyErr) {
+      console.warn('⚠️ Polyline fetch failed (deviation checking disabled):', polyErr.message);
+    }
+
+    // Create trip with all journey data embedded
     const [result] = await db.query(
-      `INSERT INTO trips (route_id, user_id, started_at, status) VALUES (?, ?, NOW(), 'active')`,
-      [routeId, userId]
+      `INSERT INTO trips
+       (user_id, from_address, to_address, from_latitude, from_longitude,
+        to_latitude, to_longitude, polyline_json, started_at, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'active')`,
+      [userId, fromAddress, toAddress, fromLatitude, fromLongitude,
+       toLatitude, toLongitude, polyline.length > 0 ? JSON.stringify(polyline) : null]
     );
 
     const tripId = result.insertId;
@@ -222,8 +111,9 @@ const startTrip = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Trip started',
+      message: 'Journey started',
       tripId,
+      polyline,
       guardiansNotified: guardians.length
     });
 
@@ -343,7 +233,7 @@ const endTrip = async (req, res) => {
 
     // Get trip start time
     const [trips] = await db.query(
-      `SELECT started_at, route_id, user_id FROM trips WHERE id = ?`,
+      `SELECT started_at, user_id FROM trips WHERE id = ?`,
       [tripId]
     );
 
@@ -355,38 +245,13 @@ const endTrip = async (req, res) => {
     }
 
     const trip = trips[0];
-    const startTime = new Date(trip.started_at);
-    const endTime = new Date();
-    const duration = endTime - startTime;
+    const duration = new Date() - new Date(trip.started_at);
 
-    // Update trip
+    // Mark trip completed
     await db.query(
       `UPDATE trips SET ended_at = NOW(), duration = ?, status = 'completed' WHERE id = ?`,
       [duration, tripId]
     );
-
-    // Update route stats
-    await db.query(
-      `UPDATE routes SET 
-        trips_completed = trips_completed + 1,
-        learned_percentage = LEAST(trips_completed * 33, 100),
-        last_visit = NOW()
-       WHERE id = ?`,
-      [trip.route_id]
-    );
-
-    // Calculate average time if we have trips
-    const [routeTrips] = await db.query(
-      `SELECT AVG(duration) as avg_duration FROM trips WHERE route_id = ? AND status = 'completed'`,
-      [trip.route_id]
-    );
-
-    if (routeTrips[0].avg_duration) {
-      await db.query(
-        `UPDATE routes SET estimated_time = ? WHERE id = ?`,
-        [Math.round(routeTrips[0].avg_duration), trip.route_id]
-      );
-    }
 
     // Notify guardians
     const [guardians] = await db.query(
@@ -433,17 +298,16 @@ const getGuardianActiveJourneys = async (req, res) => {
         t.started_at,
         t.deviation_count,
         t.total_gps_points,
-        r.from_address,
-        r.to_address,
-        r.from_latitude,
-        r.from_longitude,
-        r.to_latitude,
-        r.to_longitude,
+        t.from_address,
+        t.to_address,
+        t.from_latitude,
+        t.from_longitude,
+        t.to_latitude,
+        t.to_longitude,
         u.name as user_name,
         u.username,
         u.mobile_number
        FROM trips t
-       JOIN routes r ON t.route_id = r.id
        JOIN users u ON t.user_id = u.id
        WHERE t.status = 'active'
        AND t.user_id IN (
@@ -484,12 +348,11 @@ const getGuardianCompletedJourneys = async (req, res) => {
         t.ended_at,
         t.duration,
         t.deviation_count,
-        r.from_address,
-        r.to_address,
+        t.from_address,
+        t.to_address,
         u.name as user_name,
         u.username
        FROM trips t
-       JOIN routes r ON t.route_id = r.id
        JOIN users u ON t.user_id = u.id
        WHERE t.status = 'completed'
        AND t.user_id IN (
@@ -545,14 +408,13 @@ const getUserJourneyDetails = async (req, res) => {
         t.started_at,
         t.deviation_count,
         t.total_gps_points,
-        r.from_address,
-        r.to_address,
-        r.from_latitude,
-        r.from_longitude,
-        r.to_latitude,
-        r.to_longitude
+        t.from_address,
+        t.to_address,
+        t.from_latitude,
+        t.from_longitude,
+        t.to_latitude,
+        t.to_longitude
        FROM trips t
-       JOIN routes r ON t.route_id = r.id
        WHERE t.user_id = ? AND t.status = 'active'
        ORDER BY t.started_at DESC`,
       [userId]
@@ -566,10 +428,9 @@ const getUserJourneyDetails = async (req, res) => {
         t.ended_at,
         t.duration,
         t.deviation_count,
-        r.from_address,
-        r.to_address
+        t.from_address,
+        t.to_address
        FROM trips t
-       JOIN routes r ON t.route_id = r.id
        WHERE t.user_id = ? AND t.status = 'completed'
        ORDER BY t.ended_at DESC
        LIMIT 20`,
@@ -641,10 +502,6 @@ const getTripGPSPoints = async (req, res) => {
 };
 
 module.exports = {
-  createRoute,
-  getUserRoutes,
-  getRouteById,
-  deleteRoute,
   startTrip,
   saveGPSPoint,
   logDeviationAlert,

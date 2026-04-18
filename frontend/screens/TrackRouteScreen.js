@@ -11,18 +11,29 @@ import {
 import MapView, { Marker, Circle, Polyline } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { startTrip, saveGPSPoint, logDeviationAlert, endTrip } from '../services/api';
+import { saveGPSPoint, logDeviationAlert, endTrip } from '../services/api';
+
+// Hybrid deviation constants
+const CORRIDOR_RADIUS_METERS = 75;   // max distance from road before flagging
+const DEVIATION_TIME_MS = 60000;     // must be off-route for 60s continuously
+const DEVIATION_DIST_METERS = 150;   // must have moved 150m while off-route
+const PROGRESS_SAMPLE_SIZE = 4;      // number of recent GPS points used to judge destination progress
 
 export default function TrackRouteScreen({ route, navigation }) {
-  const { route: routeData, token } = route.params;
+  const {
+    tripId: initialTripId,
+    polyline,
+    fromAddress, toAddress,
+    fromLatitude, fromLongitude,
+    toLatitude, toLongitude,
+    token,
+  } = route.params;
 
-  const [tracking, setTracking] = useState(false);
-  const [tripId, setTripId] = useState(null);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [gpsPoints, setGpsPoints] = useState([]);
   const [gpsPointCount, setGpsPointCount] = useState(0);
-  const [deviationPercentage, setDeviationPercentage] = useState(0);
+  const [deviationMeters, setDeviationMeters] = useState(0);
   const [isOnRoute, setIsOnRoute] = useState(true);
   const [showDeviationAlert, setShowDeviationAlert] = useState(false);
   const [canDismissAlert, setCanDismissAlert] = useState(false);
@@ -31,65 +42,59 @@ export default function TrackRouteScreen({ route, navigation }) {
   const mapRef = useRef(null);
   const locationSubscription = useRef(null);
   const timerInterval = useRef(null);
-  const startTime = useRef(null);
+  const startTime = useRef(Date.now());
   const deviationAlertShown = useRef(false);
+  const showAlertRef = useRef(false);
+  const tripIdRef = useRef(initialTripId);
+  const fullRouteRef = useRef({
+    learnedRoute: { path: polyline || [] },
+    to_latitude: toLatitude,
+    to_longitude: toLongitude,
+  });
+  const outsideCorridorSince = useRef(null);
+  const outsideCorridorStartLoc = useRef(null);
+  const recentDestDistances = useRef([]);
 
   const region = {
-    latitude: routeData.from_latitude,
-    longitude: routeData.from_longitude,
+    latitude: fromLatitude,
+    longitude: fromLongitude,
     latitudeDelta: 0.05,
     longitudeDelta: 0.05,
   };
 
   useEffect(() => {
-    requestLocationPermission();
-
-    return () => {
-      stopTracking();
-    };
+    startTracking();
+    return () => { cleanup(); };
   }, []);
 
-  const requestLocationPermission = async () => {
+  const cleanup = () => {
+    if (locationSubscription.current) {
+      locationSubscription.current.remove();
+      locationSubscription.current = null;
+    }
+    if (timerInterval.current) {
+      clearInterval(timerInterval.current);
+      timerInterval.current = null;
+    }
+    showAlertRef.current = false;
+  };
+
+  const startTracking = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Denied', 'Location permission is required for tracking');
       navigation.goBack();
+      return;
     }
-  };
 
-  const handleStartTracking = async () => {
-    try {
-      setLoading(true);
+    locationSubscription.current = await Location.watchPositionAsync(
+      { accuracy: Location.Accuracy.High, timeInterval: 10000, distanceInterval: 10 },
+      handleLocationUpdate
+    );
 
-      const response = await startTrip(routeData.id, token);
-
-      if (response.success) {
-        setTripId(response.tripId);
-        setTracking(true);
-        startTime.current = Date.now();
-        deviationAlertShown.current = false;
-
-        locationSubscription.current = await Location.watchPositionAsync(
-          {
-            accuracy: Location.Accuracy.High,
-            timeInterval: 10000,
-            distanceInterval: 10,
-          },
-          handleLocationUpdate
-        );
-
-        timerInterval.current = setInterval(() => {
-          const elapsed = Date.now() - startTime.current;
-          setElapsedTime(elapsed);
-        }, 1000);
-
-        Alert.alert('Tracking Started', `${response.guardiansNotified} guardian(s) notified`);
-      }
-    } catch (error) {
-      Alert.alert('Error', error.message || 'Failed to start tracking');
-    } finally {
-      setLoading(false);
-    }
+    timerInterval.current = setInterval(() => {
+      setElapsedTime(Date.now() - startTime.current);
+    }, 1000);
   };
 
   const handleLocationUpdate = async (location) => {
@@ -107,11 +112,8 @@ export default function TrackRouteScreen({ route, navigation }) {
     setGpsPointCount(prev => prev + 1);
 
     try {
-      await saveGPSPoint(tripId, latitude, longitude, accuracy, token);
-
-      if (routeData.trips_completed >= 1) {
-        calculateDeviation(latitude, longitude);
-      }
+      await saveGPSPoint(tripIdRef.current, latitude, longitude, accuracy, token);
+      calculateDeviation(latitude, longitude);
     } catch (error) {
       console.error('Error saving GPS point:', error);
     }
@@ -124,104 +126,138 @@ export default function TrackRouteScreen({ route, navigation }) {
     });
   };
 
-  const calculateDeviation = (latitude, longitude) => {
-    const fromLat = routeData.from_latitude;
-    const fromLng = routeData.from_longitude;
-    const toLat = routeData.to_latitude;
-    const toLng = routeData.to_longitude;
-
-    const distance = getDistanceFromLine(
-      latitude,
-      longitude,
-      fromLat,
-      fromLng,
-      toLat,
-      toLng
-    );
-
-    const routeDistance = getDistance(fromLat, fromLng, toLat, toLng);
-
-    const deviation = (distance / routeDistance) * 100;
-    setDeviationPercentage(Math.min(deviation, 100));
-
-    if (deviation > 20) {
-      setIsOnRoute(false);
-      
-      if (!deviationAlertShown.current) {
-        deviationAlertShown.current = true;
-        setShowDeviationAlert(true);
-        
-        setTimeout(() => {
-          setCanDismissAlert(true);
-        }, 3000);
-
-        setTimeout(() => {
-          if (showDeviationAlert) {
-            handleDeviationResponse('no_response');
-          }
-        }, 30000);
-      }
-    } else {
-      setIsOnRoute(true);
-    }
-  };
-
-  const getDistance = (lat1, lon1, lat2, lon2) => {
+  // Haversine distance in metres between two lat/lng points
+  const getHaversineDistance = (lat1, lon1, lat2, lon2) => {
     const R = 6371e3;
     const φ1 = (lat1 * Math.PI) / 180;
     const φ2 = (lat2 * Math.PI) / 180;
     const Δφ = ((lat2 - lat1) * Math.PI) / 180;
     const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-
-    const a =
-      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
+    const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   };
 
-  const getDistanceFromLine = (px, py, x1, y1, x2, y2) => {
-    const A = px - x1;
-    const B = py - y1;
-    const C = x2 - x1;
-    const D = y2 - y1;
-
-    const dot = A * C + B * D;
+  // Distance in metres from point (px,py) to closest point on segment (x1,y1)→(x2,y2)
+  const getDistanceFromSegment = (px, py, x1, y1, x2, y2) => {
+    const A = px - x1, B = py - y1, C = x2 - x1, D = y2 - y1;
     const lenSq = C * C + D * D;
-    let param = -1;
+    const param = lenSq !== 0 ? (A * C + B * D) / lenSq : -1;
+    const closestLat = param < 0 ? x1 : param > 1 ? x2 : x1 + param * C;
+    const closestLng = param < 0 ? y1 : param > 1 ? y2 : y1 + param * D;
+    return getHaversineDistance(px, py, closestLat, closestLng);
+  };
 
-    if (lenSq !== 0) param = dot / lenSq;
-
-    let xx, yy;
-
-    if (param < 0) {
-      xx = x1;
-      yy = y1;
-    } else if (param > 1) {
-      xx = x2;
-      yy = y2;
-    } else {
-      xx = x1 + param * C;
-      yy = y1 + param * D;
+  // Minimum distance in metres from a point to any segment of the Google polyline
+  const getMinDistanceToPolyline = (lat, lng, polyline) => {
+    let minDist = Infinity;
+    for (let i = 0; i < polyline.length - 1; i++) {
+      const dist = getDistanceFromSegment(
+        lat, lng,
+        polyline[i].latitude, polyline[i].longitude,
+        polyline[i + 1].latitude, polyline[i + 1].longitude
+      );
+      if (dist < minDist) minDist = dist;
     }
+    return minDist;
+  };
 
-    return getDistance(px, py, xx, yy);
+  // Returns true if the last PROGRESS_SAMPLE_SIZE readings show the user is
+  // consistently getting closer to the destination (valid reroute scenario).
+  // A genuine threat (abduction / forced detour) moves the user AWAY from destination.
+  const isProgressingToDestination = () => {
+    const samples = recentDestDistances.current;
+    if (samples.length < PROGRESS_SAMPLE_SIZE) return false; // not enough data yet
+    // Count how many consecutive steps showed a decrease
+    let decreasingSteps = 0;
+    for (let i = 1; i < samples.length; i++) {
+      if (samples[i] < samples[i - 1]) decreasingSteps++;
+    }
+    // If majority of recent steps moved closer → user is on a valid reroute
+    return decreasingSteps >= Math.ceil((samples.length - 1) * 0.6);
+  };
+
+  // Hybrid deviation check: polyline corridor + 60s/150m time-distance buffer
+  // + destination-progress guard (absorbs Google reroutes)
+  const calculateDeviation = (latitude, longitude) => {
+    const polyline = fullRouteRef.current?.learnedRoute?.path;
+    if (!polyline || polyline.length < 2) return; // polyline not loaded yet
+
+    // Track distance to destination for reroute detection
+    const destLat = fullRouteRef.current.to_latitude;
+    const destLng = fullRouteRef.current.to_longitude;
+    const distToDest = getHaversineDistance(latitude, longitude, destLat, destLng);
+    recentDestDistances.current = [
+      ...recentDestDistances.current.slice(-(PROGRESS_SAMPLE_SIZE - 1)),
+      distToDest
+    ];
+
+    const minDist = getMinDistanceToPolyline(latitude, longitude, polyline);
+    setDeviationMeters(Math.round(minDist));
+    const onRoute = minDist <= CORRIDOR_RADIUS_METERS;
+    setIsOnRoute(onRoute);
+
+    if (!onRoute) {
+      const now = Date.now();
+      if (!outsideCorridorSince.current) {
+        // First point outside corridor — start timer and record position
+        outsideCorridorSince.current = now;
+        outsideCorridorStartLoc.current = { latitude, longitude };
+      }
+
+      const timeOutside = now - outsideCorridorSince.current;
+      const distMoved = getHaversineDistance(
+        outsideCorridorStartLoc.current.latitude,
+        outsideCorridorStartLoc.current.longitude,
+        latitude, longitude
+      );
+
+      // Suppress alert if user is progressing toward destination —
+      // this means they are on a valid Google reroute, not a genuine threat.
+      if (isProgressingToDestination()) {
+        console.log('📍 Off stored corridor but progressing to destination — reroute, not a threat');
+        return;
+      }
+
+      // Only alert after 60s off-route AND moved 150m AND moving away from destination
+      if (
+        timeOutside >= DEVIATION_TIME_MS &&
+        distMoved >= DEVIATION_DIST_METERS &&
+        !deviationAlertShown.current
+      ) {
+        deviationAlertShown.current = true;
+        showAlertRef.current = true;
+        setShowDeviationAlert(true);
+        setTimeout(() => setCanDismissAlert(true), 3000);
+        setTimeout(() => {
+          if (showAlertRef.current) handleDeviationResponse('no_response');
+        }, 30000);
+      }
+    } else {
+      // Back inside corridor — reset timer so future deviation can re-trigger
+      outsideCorridorSince.current = null;
+      outsideCorridorStartLoc.current = null;
+    }
   };
 
   const handleDeviationResponse = async (response) => {
     try {
       await logDeviationAlert(
-        tripId,
-        deviationPercentage,
+        tripIdRef.current,
+        deviationMeters,
         currentLocation.latitude,
         currentLocation.longitude,
         response,
         token
       );
 
+      showAlertRef.current = false;
       setShowDeviationAlert(false);
       setCanDismissAlert(false);
+      // Reset so a later deviation in the same trip can trigger again
+      deviationAlertShown.current = false;
+      outsideCorridorSince.current = null;
+      outsideCorridorStartLoc.current = null;
+      recentDestDistances.current = [];
 
       if (response === 'emergency') {
         Alert.alert('Emergency Alert Sent', 'All your guardians have been notified!');
@@ -251,44 +287,17 @@ export default function TrackRouteScreen({ route, navigation }) {
   const stopTracking = async () => {
     try {
       setLoading(true);
+      cleanup();
 
-      if (locationSubscription.current) {
-        locationSubscription.current.remove();
-        locationSubscription.current = null;
+      const response = await endTrip(tripIdRef.current, token);
+      if (response.success) {
+        const minutes = Math.floor(response.duration / 60000);
+        Alert.alert(
+          'Journey Completed!',
+          `Duration: ${minutes} minutes\nYou have safely arrived.`,
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
       }
-
-      if (timerInterval.current) {
-        clearInterval(timerInterval.current);
-        timerInterval.current = null;
-      }
-
-      if (tripId) {
-        const response = await endTrip(tripId, token);
-
-        if (response.success) {
-          const minutes = Math.floor(response.duration / 60000);
-          Alert.alert(
-            'Trip Completed!',
-            `Duration: ${minutes} minutes\n` +
-            `Route is ${routeData.learned_percentage + 33}% learned.\n` +
-            `${3 - (routeData.trips_completed + 1)} more trips to fully learn.`,
-            [
-              {
-                text: 'OK',
-                onPress: () => navigation.goBack(),
-              },
-            ]
-          );
-        }
-      }
-
-      setTracking(false);
-      setTripId(null);
-      setElapsedTime(0);
-      setGpsPoints([]);
-      setGpsPointCount(0);
-      setDeviationPercentage(0);
-      setIsOnRoute(true);
     } catch (error) {
       console.error('Error stopping tracking:', error);
       Alert.alert('Error', 'Failed to stop tracking properly');
@@ -339,10 +348,7 @@ export default function TrackRouteScreen({ route, navigation }) {
           showsUserLocation
         >
           <Marker
-            coordinate={{
-              latitude: routeData.from_latitude,
-              longitude: routeData.from_longitude,
-            }}
+            coordinate={{ latitude: fromLatitude, longitude: fromLongitude }}
             pinColor="green"
           >
             <View style={styles.markerContainer}>
@@ -350,20 +356,14 @@ export default function TrackRouteScreen({ route, navigation }) {
             </View>
           </Marker>
           <Circle
-            center={{
-              latitude: routeData.from_latitude,
-              longitude: routeData.from_longitude,
-            }}
+            center={{ latitude: fromLatitude, longitude: fromLongitude }}
             radius={25}
             strokeColor="rgba(76, 175, 80, 0.5)"
             fillColor="rgba(76, 175, 80, 0.2)"
           />
 
           <Marker
-            coordinate={{
-              latitude: routeData.to_latitude,
-              longitude: routeData.to_longitude,
-            }}
+            coordinate={{ latitude: toLatitude, longitude: toLongitude }}
             pinColor="red"
           >
             <View style={styles.markerContainer}>
@@ -371,15 +371,23 @@ export default function TrackRouteScreen({ route, navigation }) {
             </View>
           </Marker>
           <Circle
-            center={{
-              latitude: routeData.to_latitude,
-              longitude: routeData.to_longitude,
-            }}
+            center={{ latitude: toLatitude, longitude: toLongitude }}
             radius={25}
             strokeColor="rgba(255, 77, 77, 0.5)"
             fillColor="rgba(255, 77, 77, 0.2)"
           />
 
+          {/* Google road polyline — reference route in green dashed line */}
+          {polyline && polyline.length > 1 && (
+            <Polyline
+              coordinates={polyline}
+              strokeColor="#4CAF50"
+              strokeWidth={3}
+              lineDashPattern={[8, 6]}
+            />
+          )}
+
+          {/* User's actual GPS trail — solid blue line */}
           {gpsPoints.length > 1 && (
             <Polyline
               coordinates={gpsPoints}
@@ -389,104 +397,67 @@ export default function TrackRouteScreen({ route, navigation }) {
           )}
         </MapView>
 
-        {tracking && (
-          <View style={[
+        <View style={[
             styles.statusOverlay,
             { backgroundColor: isOnRoute ? '#4CAF50' : '#FF4D4D' }
           ]}>
-            <Ionicons 
-              name={isOnRoute ? "checkmark-circle" : "warning"} 
-              size={20} 
-              color="#fff" 
+            <Ionicons
+              name={isOnRoute ? 'checkmark-circle' : 'warning'}
+              size={20}
+              color="#fff"
             />
             <Text style={styles.statusText}>
-              {isOnRoute ? '✓ ON ROUTE' : `⚠ OFF ROUTE (${deviationPercentage.toFixed(0)}%)`}
+              {isOnRoute ? '✓ ON ROUTE' : `⚠ OFF ROUTE (${deviationMeters}m off)`}
             </Text>
           </View>
-        )}
       </View>
 
       <View style={styles.controlsContainer}>
         <View style={styles.routeTitle}>
           <View style={styles.routeTitleRow}>
             <Ionicons name="location" size={20} color="#4CAF50" />
-            <Text style={styles.routeAddress}>{routeData.from_address}</Text>
+            <Text style={styles.routeAddress}>{fromAddress}</Text>
           </View>
           <Ionicons name="arrow-forward" size={20} color="#666" />
           <View style={styles.routeTitleRow}>
             <Ionicons name="location" size={20} color="#FF4D4D" />
-            <Text style={styles.routeAddress}>{routeData.to_address}</Text>
+            <Text style={styles.routeAddress}>{toAddress}</Text>
           </View>
         </View>
 
-        {!tracking ? (
-          <View style={styles.notTrackingContainer}>
-            <Text style={styles.instructionText}>
-              Press START to begin tracking. The algorithm will learn your pattern after 3 trips.
-            </Text>
-            
-            <View style={styles.statsRow}>
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Trips Completed</Text>
-                <Text style={styles.statValue}>{routeData.trips_completed} / 3</Text>
-              </View>
-              
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Learning Progress</Text>
-                <Text style={styles.statValue}>{routeData.learned_percentage}%</Text>
-              </View>
+        <View style={styles.trackingContainer}>
+          <View style={styles.trackingStats}>
+            <View style={styles.timeCard}>
+              <Text style={styles.timeLabel}>Elapsed Time</Text>
+              <Text style={styles.timeValue}>{formatTime(elapsedTime)}</Text>
             </View>
 
-            <TouchableOpacity
-              style={[styles.trackButton, loading && styles.buttonDisabled]}
-              onPress={handleStartTracking}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <>
-                  <Ionicons name="play" size={24} color="#fff" />
-                  <Text style={styles.trackButtonText}>Start Tracking</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            <View style={styles.timeCard}>
+              <Text style={styles.timeLabel}>GPS Points</Text>
+              <Text style={styles.timeValue}>{gpsPointCount}</Text>
+            </View>
           </View>
-        ) : (
-          <View style={styles.trackingContainer}>
-            <View style={styles.trackingStats}>
-              <View style={styles.timeCard}>
-                <Text style={styles.timeLabel}>Elapsed Time</Text>
-                <Text style={styles.timeValue}>{formatTime(elapsedTime)}</Text>
-              </View>
 
-              <View style={styles.timeCard}>
-                <Text style={styles.timeLabel}>Estimated Time</Text>
-                <Text style={styles.timeValue}>{formatEstimatedTime(routeData.estimated_time)}</Text>
-              </View>
-            </View>
-
-            <View style={styles.gpsInfo}>
-              <Ionicons name="navigate" size={16} color="#666" />
-              <Text style={styles.gpsText}>{gpsPointCount} GPS points recorded</Text>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.stopButton, loading && styles.buttonDisabled]}
-              onPress={handleStopTracking}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <>
-                  <Ionicons name="stop" size={24} color="#fff" />
-                  <Text style={styles.stopButtonText}>Stop Tracking</Text>
-                </>
-              )}
-            </TouchableOpacity>
+          <View style={styles.gpsInfo}>
+            <Ionicons name="navigate" size={16} color="#666" />
+            <Text style={styles.gpsText}>Tracking active — guardians notified</Text>
           </View>
-        )}
+
+          <TouchableOpacity
+            style={[styles.stopButton, loading && styles.buttonDisabled]}
+            onPress={handleStopTracking}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Ionicons name="stop" size={24} color="#fff" />
+                <Text style={styles.stopButtonText}>Stop Tracking</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       <Modal
@@ -507,7 +478,7 @@ export default function TrackRouteScreen({ route, navigation }) {
             </View>
 
             <Text style={styles.alertMessage}>
-              You've deviated {deviationPercentage.toFixed(1)}% from your usual route.
+              You've been {deviationMeters}m off your route for over 1 minute.
             </Text>
 
             <Text style={styles.alertQuestion}>Are you safe?</Text>
