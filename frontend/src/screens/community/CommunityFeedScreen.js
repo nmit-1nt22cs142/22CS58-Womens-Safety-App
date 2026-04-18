@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, Image,
   StyleSheet, Animated, RefreshControl, StatusBar,
-  Platform, Dimensions, ActivityIndicator
+  Platform, Dimensions, ActivityIndicator, ScrollView
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -52,11 +52,15 @@ export default function CommunityFeedScreen({ navigation }) {
   const [activeFilter, setActiveFilter] = useState('All');
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const filters = ['All', 'Recent', 'Nearby', 'High Risk'];
+  const filters = ['All', 'Recent', 'My Reports', 'Nearby', 'High Risk'];
 
-  const fetchFeed = useCallback(async () => {
+  const fetchFeed = useCallback(async (filter = activeFilter) => {
     try {
-      const response = await api.get('/community/posts');
+      let url = '/community/posts';
+      if (filter === 'My Reports') {
+        url += `?authorId=${user?.id || 'anon_user'}`;
+      }
+      const response = await api.get(url);
       setPosts(response.data.data || []);
     } catch (error) {
       console.log('Feed fetch error:', error.message);
@@ -65,16 +69,16 @@ export default function CommunityFeedScreen({ navigation }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [activeFilter]);
 
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', fetchFeed);
-    fetchFeed();
+    const unsubscribe = navigation.addListener('focus', () => fetchFeed(activeFilter));
+    fetchFeed(activeFilter);
     Animated.timing(fadeAnim, {
       toValue: 1, duration: 500, useNativeDriver: true
     }).start();
     return unsubscribe;
-  }, [navigation, fetchFeed]);
+  }, [navigation, fetchFeed, activeFilter]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -108,7 +112,7 @@ export default function CommunityFeedScreen({ navigation }) {
               </Text>
             </LinearGradient>
             <View>
-              <Text style={styles.authorName}>User {(item.authorId || 'anon').substring(0, 5)}</Text>
+              <Text style={styles.authorName}>{item.authorName || (item.authorId || 'anon').substring(0, 8)}</Text>
               <Text style={styles.postTime}>{getTimeAgo(item.createdAt)}</Text>
             </View>
           </View>
@@ -122,10 +126,10 @@ export default function CommunityFeedScreen({ navigation }) {
         </View>
 
         {/* Location */}
-        {item.location?.address && (
+        {item.address && (
           <View style={styles.locationRow}>
             <Ionicons name="location" size={14} color={colors.primary} />
-            <Text style={styles.locationText} numberOfLines={1}>{item.location.address}</Text>
+            <Text style={styles.locationText} numberOfLines={1}>{item.address}</Text>
           </View>
         )}
 
@@ -182,29 +186,38 @@ export default function CommunityFeedScreen({ navigation }) {
       </View>
 
       {/* Filter Chips */}
-      <View style={styles.filterRow}>
-        {filters.map(f => (
-          <TouchableOpacity
-            key={f}
-            onPress={() => setActiveFilter(f)}
-            activeOpacity={0.7}
-          >
-            {activeFilter === f ? (
-              <LinearGradient
-                colors={gradients.primary}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.filterChipActive}
-              >
-                <Text style={styles.filterTextActive}>{f}</Text>
-              </LinearGradient>
-            ) : (
-              <View style={styles.filterChip}>
-                <Text style={styles.filterText}>{f}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        ))}
+      <View style={styles.filterContainer}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          contentContainerStyle={styles.filterScroll}
+        >
+          {filters.map(f => (
+            <TouchableOpacity
+              key={f}
+              onPress={() => {
+                setActiveFilter(f);
+                fetchFeed(f);
+              }}
+              activeOpacity={0.7}
+            >
+              {activeFilter === f ? (
+                <LinearGradient
+                  colors={gradients.primary}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.filterChipActive}
+                >
+                  <Text style={styles.filterTextActive}>{f}</Text>
+                </LinearGradient>
+              ) : (
+                <View style={styles.filterChip}>
+                  <Text style={styles.filterText}>{f}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Stats Row */}
@@ -305,7 +318,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   loadingContainer: { justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 12, color: colors.textSecondary, fontSize: 14 },
-  listContent: { paddingHorizontal: 20, paddingBottom: 100 },
+  listContent: { paddingHorizontal: 20, paddingBottom: 140 },
 
   // Header
   header: {
@@ -340,10 +353,13 @@ const styles = StyleSheet.create({
   },
 
   // Filters
-  filterRow: {
-    flexDirection: 'row',
-    gap: 8,
+  filterContainer: {
+    marginHorizontal: -20,
     marginBottom: 16,
+  },
+  filterScroll: {
+    paddingHorizontal: 20,
+    gap: 8,
   },
   filterChip: {
     paddingHorizontal: 18,
@@ -542,7 +558,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 24,
+    bottom: 120,
     zIndex: 10,
   },
   fabGradient: {

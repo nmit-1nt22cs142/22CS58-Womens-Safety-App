@@ -4,23 +4,24 @@ const postSchema = new mongoose.Schema({
   authorId: {
     type: String,
     required: true,
-    // Note: We're using a simple string for now until the Auth module is built.
-    // Eventually this will be a reference: ObjectIds -> ref: 'User'
+  },
+  authorName: {
+    type: String,
+    required: true, // Stores the user's name for display
   },
   location: {
     type: {
       type: String,
-      enum: ['Point'],
-      default: 'Point',
+      enum: ['Point']
     },
     coordinates: {
       type: [Number], // [longitude, latitude]
       // required: true, 
-    },
-    address: {
-      type: String,
-      required: true, // E.g., "Koramangala, Bangalore"
     }
+  },
+  address: {
+    type: String,
+    required: true, // E.g., "Koramangala, Bangalore"
   },
   description: {
     type: String,

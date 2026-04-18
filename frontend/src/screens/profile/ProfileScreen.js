@@ -7,9 +7,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, gradients } from '../../styles/colors';
 import { useAuth } from '../../context/AuthContext';
+import { useNavigation } from '@react-navigation/native';
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
+  const navigation = useNavigation();
 
   const handleLogout = () => {
     Alert.alert(
@@ -32,6 +34,7 @@ export default function ProfileScreen() {
     {
       title: 'SAFETY',
       items: [
+        { icon: 'document-text-outline', label: 'My Reports', color: colors.primary, bg: colors.primaryFaded, chevron: true, screen: 'MyReports' },
         { icon: 'people-outline', label: 'Emergency Contacts', color: '#3B82F6', bg: '#DBEAFE', chevron: true },
         { icon: 'notifications-outline', label: 'Alert Preferences', color: '#8B5CF6', bg: '#EDE9FE', chevron: true },
         { icon: 'location-outline', label: 'Safe Zones', color: '#10B981', bg: '#D1FAE5', chevron: true },
@@ -99,11 +102,14 @@ export default function ProfileScreen() {
         <View style={styles.statsCard}>
           {stats.map((stat, i) => (
             <React.Fragment key={i}>
-              <View style={styles.statItem}>
+              <TouchableOpacity 
+                style={styles.statItem}
+                onPress={() => stat.label === 'Reports' ? navigation.navigate('MyReports') : null}
+              >
                 <Ionicons name={stat.icon} size={20} color={colors.primary} />
                 <Text style={styles.statValue}>{stat.value}</Text>
                 <Text style={styles.statLabel}>{stat.label}</Text>
-              </View>
+              </TouchableOpacity>
               {i < stats.length - 1 && <View style={styles.statDivider} />}
             </React.Fragment>
           ))}
@@ -122,6 +128,7 @@ export default function ProfileScreen() {
                     ii < section.items.length - 1 && styles.menuItemBorder
                   ]}
                   activeOpacity={0.6}
+                  onPress={() => item.screen ? navigation.navigate(item.screen) : null}
                 >
                   <View style={[styles.menuIcon, { backgroundColor: item.bg }]}>
                     <Ionicons name={item.icon} size={20} color={item.color} />

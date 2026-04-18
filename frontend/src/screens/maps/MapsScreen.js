@@ -1,8 +1,9 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Animated, Dimensions, StatusBar, Platform
 } from 'react-native';
+import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, gradients } from '../../styles/colors';
@@ -12,8 +13,39 @@ const { width } = Dimensions.get('window');
 export default function MapsScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pinAnim = useRef(new Animated.Value(0)).current;
+  const [currentAddress, setCurrentAddress] = useState('Detecting current location...');
+  const [coords, setCoords] = useState(null);
 
   useEffect(() => {
+    // 1. Fetch Location
+    (async () => {
+      try {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setCurrentAddress('Location permission denied');
+          return;
+        }
+
+        let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        if (location) {
+          setCoords(location.coords);
+          let reverseGeocode = await Location.reverseGeocodeAsync({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          });
+
+          if (reverseGeocode.length > 0) {
+            const place = reverseGeocode[0];
+            setCurrentAddress(`${place.name || ''}, ${place.street || ''}, ${place.city || ''}`);
+          }
+        }
+      } catch (error) {
+        console.log('Maps Location Error:', error);
+        setCurrentAddress('Using estimated location');
+      }
+    })();
+
+    // 2. Animations
     Animated.timing(fadeAnim, {
       toValue: 1, duration: 600, useNativeDriver: true
     }).start();
@@ -82,65 +114,67 @@ export default function MapsScreen() {
       <Animated.View style={[styles.bottomSheet, { opacity: fadeAnim }]}>
         <View style={styles.handle} />
 
-        {/* Start Tracking Button */}
-        <TouchableOpacity activeOpacity={0.85}>
-          <LinearGradient
-            colors={gradients.primary}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.trackButton}
-          >
-            <Ionicons name="navigate" size={22} color="#fff" />
-            <Text style={styles.trackButtonText}>Start Live Tracking</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-
-        {/* Coming Soon Badge */}
-        <View style={styles.comingSoon}>
-          <Ionicons name="time-outline" size={14} color={colors.primary} />
-          <Text style={styles.comingSoonText}>Live tracking coming soon</Text>
-        </View>
-
-        {/* Safety Zones */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Nearby Safety Zones</Text>
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-          {safetyZones.map((zone, i) => (
-            <View key={i} style={styles.zoneChip}>
-              <View style={[styles.zoneDot, { backgroundColor: zone.color }]} />
-              <Text style={styles.zoneText}>{zone.name}</Text>
-              <Text style={[styles.zoneSafety, { color: zone.color }]}>{zone.safety}</Text>
-            </View>
-          ))}
-        </ScrollView>
-
-        {/* Recent Routes */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recent Routes</Text>
-        </View>
-        {recentRoutes.map((route, i) => (
-          <TouchableOpacity key={i} style={styles.routeCard} activeOpacity={0.7}>
-            <View style={styles.routeIcon}>
-              <Ionicons name="trail-sign-outline" size={20} color={colors.primary} />
-            </View>
-            <View style={styles.routeContent}>
-              <Text style={styles.routeFrom}>{route.from}</Text>
-              <View style={styles.routeArrow}>
-                <View style={styles.routeLine} />
-                <Ionicons name="arrow-forward" size={12} color={colors.textLight} />
-              </View>
-              <Text style={styles.routeTo}>{route.to}</Text>
-              <Text style={styles.routeMeta}>{route.time} • {route.date}</Text>
-            </View>
-            <View style={[styles.safeTag, { backgroundColor: route.safe ? colors.successLight : colors.errorLight }]}>
-              <Text style={[styles.safeTagText, { color: route.safe ? colors.success : colors.error }]}>
-                {route.safe ? 'Safe' : 'Alert'}
-              </Text>
-            </View>
+        <ScrollView showsVerticalScrollIndicator={false} style={styles.sheetContent}>
+          {/* Start Tracking Button */}
+          <TouchableOpacity activeOpacity={0.85}>
+            <LinearGradient
+              colors={gradients.primary}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.trackButton}
+            >
+              <Ionicons name="navigate" size={22} color="#fff" />
+              <Text style={styles.trackButtonText}>Start Live Tracking</Text>
+            </LinearGradient>
           </TouchableOpacity>
-        ))}
-        <View style={{ height: 20 }} />
+
+          {/* Coming Soon Badge */}
+          <View style={styles.comingSoon}>
+            <Ionicons name="location-outline" size={14} color={colors.primary} />
+            <Text style={styles.comingSoonText} numberOfLines={1}>{currentAddress}</Text>
+          </View>
+
+          {/* Safety Zones */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Nearby Safety Zones</Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+            {safetyZones.map((zone, i) => (
+              <View key={i} style={styles.zoneChip}>
+                <View style={[styles.zoneDot, { backgroundColor: zone.color }]} />
+                <Text style={styles.zoneText}>{zone.name}</Text>
+                <Text style={[styles.zoneSafety, { color: zone.color }]}>{zone.safety}</Text>
+              </View>
+            ))}
+          </ScrollView>
+
+          {/* Recent Routes */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recent Routes</Text>
+          </View>
+          {recentRoutes.map((route, i) => (
+            <TouchableOpacity key={i} style={styles.routeCard} activeOpacity={0.7}>
+              <View style={styles.routeIcon}>
+                <Ionicons name="trail-sign-outline" size={20} color={colors.primary} />
+              </View>
+              <View style={styles.routeContent}>
+                <Text style={styles.routeFrom}>{route.from}</Text>
+                <View style={styles.routeArrow}>
+                  <View style={styles.routeLine} />
+                  <Ionicons name="arrow-forward" size={12} color={colors.textLight} />
+                </View>
+                <Text style={styles.routeTo}>{route.to}</Text>
+                <Text style={styles.routeMeta}>{route.time} • {route.date}</Text>
+              </View>
+              <View style={[styles.safeTag, { backgroundColor: route.safe ? colors.successLight : colors.errorLight }]}>
+                <Text style={[styles.safeTagText, { color: route.safe ? colors.success : colors.error }]}>
+                  {route.safe ? 'Safe' : 'Alert'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+          <View style={{ height: 100 }} />
+        </ScrollView>
       </Animated.View>
     </View>
   );
@@ -200,6 +234,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 12,
     elevation: 10,
+  },
+  sheetContent: {
+    marginTop: 8,
   },
   handle: {
     width: 40,

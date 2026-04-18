@@ -6,6 +6,7 @@ import AuthStack from './AuthStack';
 import MainTabNavigator from './MainTabNavigator';
 import CreatePostScreen from '../screens/community/CreatePostScreen';
 import PostDetailScreen from '../screens/community/PostDetailScreen';
+import MyReportsScreen from '../screens/community/MyReportsScreen';
 
 const RootStack = createStackNavigator();
 
@@ -28,6 +29,11 @@ export default function AppNavigator() {
             <RootStack.Screen
               name="PostDetail"
               component={PostDetailScreen}
+              options={{ animation: 'slide_from_right' }}
+            />
+            <RootStack.Screen
+              name="MyReports"
+              component={MyReportsScreen}
               options={{ animation: 'slide_from_right' }}
             />
           </>

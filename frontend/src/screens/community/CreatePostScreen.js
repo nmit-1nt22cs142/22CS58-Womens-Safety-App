@@ -5,10 +5,12 @@ import {
   StatusBar, Dimensions, KeyboardAvoidingView
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, gradients } from '../../styles/colors';
 import { api } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
@@ -22,13 +24,58 @@ const SAFETY_COLORS = [
 ];
 
 export default function CreatePostScreen({ navigation }) {
+  const { user } = useAuth();
   const [address, setAddress] = useState('');
   const [description, setDescription] = useState('');
   const [harasserDetails, setHarasserDetails] = useState('');
   const [safetyRating, setSafetyRating] = useState(3);
   const [imageUri, setImageUri] = useState(null);
+  const [longitude, setLongitude] = useState(null);
+  const [latitude, setLatitude] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
+
+  const detectLocation = async () => {
+    setLocating(true);
+    try {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Please allow location access to use this feature.');
+        return;
+      }
+
+      let location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const { latitude, longitude } = location.coords;
+      setLatitude(latitude);
+      setLongitude(longitude);
+      
+      let reverseGeocode = await Location.reverseGeocodeAsync({
+        latitude,
+        longitude,
+      });
+
+      if (reverseGeocode && reverseGeocode.length > 0) {
+        const place = reverseGeocode[0];
+        const formattedAddress = [
+          place.name,
+          place.street,
+          place.city,
+          place.region
+        ].filter(Boolean).join(', ');
+        
+        setAddress(formattedAddress);
+      }
+    } catch (error) {
+      console.log('Location error:', error);
+      Alert.alert('Location Error', 'Could not detect your current location.');
+    } finally {
+      setLocating(false);
+    }
+  };
 
   const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
@@ -67,11 +114,14 @@ export default function CreatePostScreen({ navigation }) {
     setLoading(true);
     try {
       const formData = new FormData();
-      formData.append('authorId', 'user123');
+      formData.append('authorId', user?.id || 'anon_user');
+      formData.append('authorName', user?.name || 'Anonymous');
       formData.append('address', address);
       formData.append('description', description);
       if (harasserDetails) formData.append('harasserDetails', harasserDetails);
       if (safetyRating) formData.append('safetyRating', safetyRating);
+      if (longitude) formData.append('longitude', longitude);
+      if (latitude) formData.append('latitude', latitude);
 
       if (imageUri) {
         const filename = imageUri.split('/').pop();
@@ -138,6 +188,17 @@ export default function CreatePostScreen({ navigation }) {
               onFocus={() => setFocusedField('address')}
               onBlur={() => setFocusedField(null)}
             />
+            <TouchableOpacity 
+              onPress={detectLocation} 
+              disabled={locating}
+              style={styles.locationBtn}
+            >
+              {locating ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Ionicons name="locate" size={20} color={colors.primary} />
+              )}
+            </TouchableOpacity>
           </View>
 
           {/* Description */}
@@ -335,6 +396,9 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: colors.text,
+  },
+  locationBtn: {
+    padding: 4,
   },
 
   textAreaWrapper: {

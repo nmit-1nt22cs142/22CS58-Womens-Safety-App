@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  Animated, Dimensions, StatusBar, Platform
+  Animated, Dimensions, StatusBar, Platform, Modal, TextInput, Alert, Switch
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, gradients } from '../../styles/colors';
@@ -15,6 +17,15 @@ export default function HomeScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0.3)).current;
+  
+  const [currentLocation, setCurrentLocation] = useState('Detecting location...');
+  const [isSafe, setIsSafe] = useState(true);
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
+  const [newContactIsGuardian, setNewContactIsGuardian] = useState(false);
+  const [contacts, setContacts] = useState([
+    { name: 'Police', initials: 'P', color: '#1E3A8A', isGuardian: false },
+  ]);
 
   useEffect(() => {
     // Pulse animation for SOS button
@@ -55,7 +66,101 @@ export default function HomeScreen() {
       duration: 600,
       useNativeDriver: true,
     }).start();
+
+    // Load Contacts
+    // Load Contacts & Location
+    const initializeData = async () => {
+      // 1. Load Contacts
+      try {
+        const saved = await AsyncStorage.getItem('aabha_contacts');
+        if (saved) {
+          setContacts(JSON.parse(saved));
+        } else {
+          const defaults = [
+            { name: 'Mom', initials: 'M', color: '#FF6B6B', isGuardian: true },
+            { name: 'Dad', initials: 'D', color: '#3B82F6', isGuardian: true },
+            { name: 'Friend', initials: 'A', color: '#10B981', isGuardian: false },
+          ];
+          setContacts(defaults);
+          await AsyncStorage.setItem('aabha_contacts', JSON.stringify(defaults));
+        }
+      } catch (e) { console.log('Contacts error:', e); }
+
+      // 2. Detect Location
+      try {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setCurrentLocation('Location permission denied');
+          return;
+        }
+
+        // Get quick position first
+        let location = await Location.getLastKnownPositionAsync({});
+        if (!location) {
+          location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        }
+
+        let reverseGeocode = await Location.reverseGeocodeAsync({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+
+        if (reverseGeocode.length > 0) {
+          const place = reverseGeocode[0];
+          setCurrentLocation(`${place.street || ''}, ${place.name || ''}, ${place.city || ''}`);
+        }
+      } catch (error) {
+        console.log('Location error:', error);
+        setCurrentLocation('Could not detect location');
+      }
+    };
+
+    initializeData();
   }, []);
+
+  const saveContacts = async (newContacts) => {
+    try {
+      await AsyncStorage.setItem('aabha_contacts', JSON.stringify(newContacts));
+    } catch (e) {
+      console.log('Error saving contacts:', e);
+    }
+  };
+
+  const addContact = async () => {
+    if (!newContactName.trim()) return;
+    const colors_pool = ['#F59E0B', '#6366F1', '#EC4899', '#8B5CF6', '#10B981'];
+    const newContact = {
+      name: newContactName,
+      initials: newContactName.charAt(0).toUpperCase(),
+      color: colors_pool[Math.floor(Math.random() * colors_pool.length)],
+      isGuardian: newContactIsGuardian
+    };
+    const updated = [...contacts, newContact];
+    setContacts(updated);
+    await saveContacts(updated);
+    setNewContactName('');
+    setNewContactIsGuardian(false);
+    setShowContactModal(false);
+  };
+
+  const removeContact = async (index) => {
+    const updated = contacts.filter((_, i) => i !== index);
+    setContacts(updated);
+    await saveContacts(updated);
+  };
+
+  const handleAlertGuardians = () => {
+    const guardians = contacts.filter(c => c.isGuardian);
+    if (guardians.length === 0) {
+      Alert.alert('No Guardians Set', 'Please add or mark a contact as a Guardian first.');
+      return;
+    }
+    Alert.alert(
+      'Alerting Guardians',
+      `Emergency SOS sent to ${guardians.length} Guardian(s): ${guardians.map(g => g.name).join(', ')}`,
+      [{ text: 'OK' }]
+    );
+  };
 
   const getGreeting = () => {
     const h = new Date().getHours();
@@ -107,15 +212,17 @@ export default function HomeScreen() {
         {/* Safety Status Card */}
         <Animated.View style={[styles.statusCard, { opacity: fadeAnim }]}>
           <LinearGradient
-            colors={['#D1FAE5', '#ECFDF5']}
-            style={styles.statusGradient}
+            colors={isSafe ? ['#D1FAE5', '#ECFDF5'] : ['#FEE2E2', '#FEF2F2']}
+            style={[styles.statusGradient, !isSafe && { borderColor: '#FECACA' }]}
           >
             <View style={styles.statusRow}>
-              <View style={styles.statusDot} />
-              <Text style={styles.statusText}>You are in a safe zone</Text>
+              <View style={[styles.statusDot, !isSafe && { backgroundColor: colors.error }]} />
+              <Text style={[styles.statusText, !isSafe && { color: '#991B1B' }]}>
+                {isSafe ? 'You are in a safe zone' : 'Risk detected in current area'}
+              </Text>
             </View>
-            <Text style={styles.statusLocation}>
-              <Ionicons name="location" size={13} color={colors.textSecondary} /> Near Nitte Meenakshi Institute
+            <Text style={styles.statusLocation} numberOfLines={1}>
+              <Ionicons name="location" size={13} color={colors.textSecondary} /> {currentLocation}
             </Text>
           </LinearGradient>
         </Animated.View>
@@ -154,7 +261,7 @@ export default function HomeScreen() {
             <TouchableOpacity
               key={i}
               style={styles.actionCard}
-              onPress={showComingSoon}
+              onPress={action.label.includes('Guardians') ? handleAlertGuardians : showComingSoon}
               activeOpacity={0.7}
             >
               <View style={[styles.actionIcon, { backgroundColor: action.bg }]}>
@@ -173,14 +280,39 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.contactsRow}>
-          {emergencyContacts.map((contact, i) => (
-            <TouchableOpacity key={i} style={styles.contactItem} activeOpacity={0.7}>
+          {contacts.map((contact, i) => (
+            <TouchableOpacity 
+              key={i} 
+              style={styles.contactItem} 
+              activeOpacity={0.7}
+              onLongPress={() => {
+                Alert.alert('Remove Contact', `Remove ${contact.name}?`, [
+                  { text: 'Cancel' },
+                  { text: 'Remove', onPress: () => removeContact(i), style: 'destructive' }
+                ])
+              }}
+            >
               <View style={[styles.contactAvatar, { backgroundColor: contact.color }]}>
                 <Text style={styles.contactInitials}>{contact.initials}</Text>
+                {contact.isGuardian && (
+                  <View style={styles.guardianBadge}>
+                    <Ionicons name="shield-checkmark" size={10} color="#fff" />
+                  </View>
+                )}
               </View>
               <Text style={styles.contactName}>{contact.name}</Text>
             </TouchableOpacity>
           ))}
+          <TouchableOpacity 
+            style={styles.contactItem} 
+            activeOpacity={0.7}
+            onPress={() => setShowContactModal(true)}
+          >
+            <View style={[styles.contactAvatar, { backgroundColor: '#F3F4F6', borderStyle: 'dashed', borderWidth: 2, borderColor: colors.border }]}>
+              <Ionicons name="add" size={24} color={colors.textLight} />
+            </View>
+            <Text style={styles.contactName}>Add</Text>
+          </TouchableOpacity>
         </ScrollView>
 
         {/* Safety Tips */}
@@ -220,13 +352,68 @@ export default function HomeScreen() {
 
         <View style={{ height: 30 }} />
       </ScrollView>
+
+      {/* Add Contact Modal */}
+      <Modal
+        visible={showContactModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowContactModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Contact</Text>
+              <TouchableOpacity onPress={() => setShowContactModal(false)}>
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalLabel}>CONTACT NAME</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Enter name"
+              value={newContactName}
+              onChangeText={setNewContactName}
+            />
+
+            <View style={styles.guardianToggleRow}>
+              <View>
+                <Text style={styles.guardianToggleTitle}>Mark as Guardian</Text>
+                <Text style={styles.guardianToggleSub}>Receives immediate SOS alerts</Text>
+              </View>
+              <Switch
+                value={newContactIsGuardian}
+                onValueChange={setNewContactIsGuardian}
+                trackColor={{ false: '#767577', true: colors.primaryLight }}
+                thumbColor={newContactIsGuardian ? colors.primary : '#f4f3f4'}
+              />
+            </View>
+
+            <TouchableOpacity 
+              style={styles.modalButton}
+              onPress={addContact}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={gradients.primary}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.modalButtonGradient}
+              >
+                <Text style={styles.modalButtonText}>Add to Emergency List</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scrollContent: { paddingHorizontal: 20 },
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 120 },
 
   // Header
   header: {
@@ -481,5 +668,90 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  guardianBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    backgroundColor: colors.primary,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#fff',
+  },
+  guardianToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    padding: 16,
+    borderRadius: 14,
+    marginBottom: 24,
+  },
+  guardianToggleTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  guardianToggleSub: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    padding: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontFamily: 'DonegalOne_400Regular',
+    fontSize: 22,
+    color: colors.text,
+  },
+  modalLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  modalInput: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 14,
+    padding: 16,
+    fontSize: 16,
+    color: colors.text,
+    marginBottom: 24,
+  },
+  modalButton: {
+    borderRadius: 28,
+    overflow: 'hidden',
+  },
+  modalButtonGradient: {
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
   },
 });

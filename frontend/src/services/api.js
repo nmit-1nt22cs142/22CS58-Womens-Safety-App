@@ -6,7 +6,7 @@ import { Platform } from 'react-native';
 // If testing on a physical device via Expo, you MUST use your computer's local IP address (e.g., 192.168.1.10)
 const getBaseUrl = () => {
     if (__DEV__) {
-        return Platform.OS === 'android' ? 'http://10.0.2.2:5000/api' : 'http://localhost:5000/api';
+        return Platform.OS === 'android' ? 'http://10.0.2.2:5000/api' : 'http://192.168.1.13:5000/api';
     }
     // Production Render URL will go here
     return 'https://your-production-url.onrender.com/api'; 
