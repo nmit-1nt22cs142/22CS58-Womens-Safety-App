@@ -20,6 +20,11 @@
     },
     "android": {
       "package": "com.womensafety.app",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBT8-gEs1ieXgauaJbLqu98z-XwfmI4Mwc"
+        }
+      },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
