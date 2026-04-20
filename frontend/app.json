@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "frontend",
-    "slug": "frontend",
+    "slug": "womensafetyapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -28,7 +28,9 @@
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION"
+        "ACCESS_BACKGROUND_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "web": {
@@ -36,7 +38,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "ab159fef-092a-4966-872f-0cc0981901d1"
+        "projectId": "67f352e5-6fce-4c39-b97a-9a61ccf3222a"
       }
     },
     "plugins": [
@@ -48,6 +50,7 @@
           "locationWhenInUsePermission": "Allow Women Safety App to use your location while using the app for route tracking."
         }
       ]
-    ]
+    ],
+    "owner": "adarsh08"
   }
 }

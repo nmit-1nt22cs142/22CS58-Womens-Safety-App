@@ -2,7 +2,7 @@ import axios from 'axios';
 import { Platform } from 'react-native';
 
 // ⚠️ IMPORTANT: Update this IP address with your computer's actual IP
-const YOUR_COMPUTER_IP = '192.168.0.107'; // 👈 UPDATE THIS!
+const YOUR_COMPUTER_IP = '10.49.216.52'; // 👈 UPDATE THIS!
 
 const getBaseURL = () => {
   if (Platform.OS === 'web') {
