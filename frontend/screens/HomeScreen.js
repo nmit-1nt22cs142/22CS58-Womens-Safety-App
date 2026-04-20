@@ -1,16 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { triggerDangerAlert } from '../services/api';
+import * as Location from 'expo-location';
+import { triggerDangerAlert, startLiveLocation, updateLiveLocation, stopLiveLocation } from '../services/api';
 
 const HomeScreen = ({ navigation, route }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Live location state
+  const [isSharingLocation, setIsSharingLocation] = useState(false);
+  const [locationSessionId, setLocationSessionId] = useState(null);
+  const [guardiansCount, setGuardiansCount] = useState(0);
+  const locationIntervalRef = useRef(null);
+
   useEffect(() => {
     loadUserData();
+    return () => {
+      // Cleanup interval on unmount
+      if (locationIntervalRef.current) {
+        clearInterval(locationIntervalRef.current);
+      }
+    };
   }, []);
 
   const loadUserData = async () => {
@@ -22,7 +35,6 @@ const HomeScreen = ({ navigation, route }) => {
         setToken(authToken);
         setUser(JSON.parse(userData));
       } else if (route?.params?.user && route?.params?.token) {
-        // Fallback to route params
         setUser(route.params.user);
         setToken(route.params.token);
       }
@@ -47,8 +59,8 @@ const HomeScreen = ({ navigation, route }) => {
             try {
               setLoading(true);
               const response = await triggerDangerAlert(
-                null, // latitude (can add later with GPS)
-                null, // longitude
+                null,
+                null,
                 'Emergency! I need help!',
                 token
               );
@@ -64,6 +76,109 @@ const HomeScreen = ({ navigation, route }) => {
               Alert.alert('Error', error.message || 'Failed to send alert');
             } finally {
               setLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // ============================================
+  // LIVE LOCATION SHARING
+  // ============================================
+  const handleSendLocation = async () => {
+    if (isSharingLocation) {
+      // Stop sharing
+      handleStopSharing();
+      return;
+    }
+
+    try {
+      // Request location permission
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Location permission is required to share your location.');
+        return;
+      }
+
+      // Get current location
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      const { latitude, longitude } = location.coords;
+
+      // Start session on backend
+      const response = await startLiveLocation(latitude, longitude, token);
+
+      if (response.success) {
+        setLocationSessionId(response.sessionId);
+        setGuardiansCount(response.guardiansCount);
+        setIsSharingLocation(true);
+
+        // Start sending updates every 10 seconds
+        locationIntervalRef.current = setInterval(async () => {
+          try {
+            const updatedLocation = await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.High,
+            });
+            await updateLiveLocation(
+              response.sessionId,
+              updatedLocation.coords.latitude,
+              updatedLocation.coords.longitude,
+              token
+            );
+            console.log('📍 Location updated:', updatedLocation.coords.latitude, updatedLocation.coords.longitude);
+          } catch (err) {
+            console.error('❌ Location update failed:', err);
+          }
+        }, 10000); // every 10 seconds
+
+        Alert.alert(
+          '📍 Location Shared',
+          `Your live location is now being shared with ${response.guardiansCount} guardian(s). They can track you in real time.`,
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      Alert.alert('Error', error.message || 'Failed to share location');
+    }
+  };
+
+  const handleStopSharing = async () => {
+    Alert.alert(
+      'Stop Sharing',
+      'Stop sharing your live location with guardians?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Stop',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (locationIntervalRef.current) {
+                clearInterval(locationIntervalRef.current);
+                locationIntervalRef.current = null;
+              }
+
+              if (locationSessionId) {
+                await stopLiveLocation(locationSessionId, token);
+              }
+
+              setIsSharingLocation(false);
+              setLocationSessionId(null);
+              setGuardiansCount(0);
+
+              Alert.alert('Stopped', 'Live location sharing has been stopped.');
+            } catch (error) {
+              console.error('Error stopping location share:', error);
+              // Still stop locally even if server call fails
+              setIsSharingLocation(false);
+              setLocationSessionId(null);
+              if (locationIntervalRef.current) {
+                clearInterval(locationIntervalRef.current);
+                locationIntervalRef.current = null;
+              }
             }
           }
         }
@@ -125,14 +240,41 @@ const HomeScreen = ({ navigation, route }) => {
         ))}
       </View>
 
-      {/* SEND LOCATION */}
-      <View style={styles.locationCard}>
-        <Ionicons name="location-outline" size={40} color="#FF6B9D" />
-        <View style={{ marginLeft: 10 }}>
-          <Text style={styles.locationTitle}>Send Location</Text>
-          <Text style={styles.locationSub}>Share Location</Text>
+      {/* SEND LOCATION BUTTON */}
+      <TouchableOpacity
+        style={[
+          styles.locationCard,
+          isSharingLocation && styles.locationCardActive
+        ]}
+        onPress={handleSendLocation}
+        activeOpacity={0.8}
+      >
+        <View style={styles.locationIconWrapper}>
+          <Ionicons
+            name={isSharingLocation ? 'location' : 'location-outline'}
+            size={40}
+            color={isSharingLocation ? '#fff' : '#FF6B9D'}
+          />
+          {isSharingLocation && (
+            <View style={styles.livePulseDot} />
+          )}
         </View>
-      </View>
+        <View style={{ marginLeft: 14, flex: 1 }}>
+          <Text style={[styles.locationTitle, isSharingLocation && styles.locationTitleActive]}>
+            {isSharingLocation ? 'Sharing Live Location' : 'Send Location'}
+          </Text>
+          <Text style={[styles.locationSub, isSharingLocation && styles.locationSubActive]}>
+            {isSharingLocation
+              ? `Live • ${guardiansCount} guardian(s) tracking you • Tap to stop`
+              : 'Share live location with guardians'}
+          </Text>
+        </View>
+        {isSharingLocation && (
+          <View style={styles.stopBadge}>
+            <Text style={styles.stopBadgeText}>STOP</Text>
+          </View>
+        )}
+      </TouchableOpacity>
 
       {/* DANGER BUTTON */}
       <TouchableOpacity 
@@ -257,6 +399,8 @@ const styles = StyleSheet.create({
     color: '#444', 
     textAlign: 'center' 
   },
+
+  // Location Card
   locationCard: {
     flexDirection: 'row',
     backgroundColor: '#fff',
@@ -265,15 +409,63 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     elevation: 5,
     marginTop: 10,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  locationCardActive: {
+    backgroundColor: '#FF6B9D',
+    borderColor: '#FF6B9D',
+    elevation: 8,
+  },
+  locationIconWrapper: {
+    position: 'relative',
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  livePulseDot: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#FF6B9D',
   },
   locationTitle: { 
     fontSize: 16, 
-    fontWeight: '700' 
+    fontWeight: '700',
+    color: '#333',
+  },
+  locationTitleActive: {
+    color: '#fff',
   },
   locationSub: { 
     fontSize: 12, 
-    color: '#777' 
+    color: '#777',
+    marginTop: 3,
   },
+  locationSubActive: {
+    color: 'rgba(255,255,255,0.85)',
+  },
+  stopBadge: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  stopBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
+  // Danger Button
   largeDangerButton: {
     backgroundColor: '#FF4D4D',
     marginTop: 25,

@@ -51,10 +51,6 @@ const fetchGoogleRoutePolyline = (fromLat, fromLng, toLat, toLng) => {
   });
 };
 
-
-
-
-
 // ============================================
 // START TRIP  (on-demand — no saved route needed)
 // ============================================
@@ -437,10 +433,21 @@ const getUserJourneyDetails = async (req, res) => {
       [userId]
     );
 
+    // Get active live location session for this user
+    const [liveSessions] = await db.query(
+      `SELECT id as session_id, latitude, longitude, started_at, updated_at
+       FROM live_location_sessions
+       WHERE user_id = ? AND is_active = 1
+       ORDER BY started_at DESC
+       LIMIT 1`,
+      [userId]
+    );
+
     return res.status(200).json({
       success: true,
       activeJourneys,
-      completedJourneys
+      completedJourneys,
+      liveLocation: liveSessions.length > 0 ? liveSessions[0] : null
     });
 
   } catch (error) {
@@ -501,6 +508,186 @@ const getTripGPSPoints = async (req, res) => {
   }
 };
 
+// ============================================
+// START LIVE LOCATION SHARING
+// ============================================
+const startLiveLocation = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { latitude, longitude } = req.body;
+
+    if (!latitude || !longitude) {
+      return res.status(400).json({
+        success: false,
+        message: 'Latitude and longitude are required'
+      });
+    }
+
+    // End any existing active session for this user
+    await db.query(
+      `UPDATE live_location_sessions SET is_active = 0, ended_at = NOW() WHERE user_id = ? AND is_active = 1`,
+      [userId]
+    );
+
+    // Create new session
+    const [result] = await db.query(
+      `INSERT INTO live_location_sessions (user_id, latitude, longitude, is_active) VALUES (?, ?, ?, 1)`,
+      [userId, latitude, longitude]
+    );
+
+    const sessionId = result.insertId;
+
+    // Get guardians count
+    const [guardians] = await db.query(
+      `SELECT COUNT(*) as count FROM guardian_relationships WHERE user_id = ? AND status = 'accepted'`,
+      [userId]
+    );
+
+    console.log('📍 Live location session started:', sessionId, 'for user:', userId);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Live location sharing started',
+      sessionId,
+      guardiansCount: guardians[0].count
+    });
+
+  } catch (error) {
+    console.error('❌ Start live location error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+// ============================================
+// UPDATE LIVE LOCATION
+// ============================================
+const updateLiveLocation = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { sessionId, latitude, longitude } = req.body;
+
+    if (!sessionId || !latitude || !longitude) {
+      return res.status(400).json({
+        success: false,
+        message: 'Session ID, latitude, and longitude are required'
+      });
+    }
+
+    // Update location — updated_at triggers automatically via ON UPDATE CURRENT_TIMESTAMP
+    const [result] = await db.query(
+      `UPDATE live_location_sessions 
+       SET latitude = ?, longitude = ?, updated_at = NOW()
+       WHERE id = ? AND user_id = ? AND is_active = 1`,
+      [latitude, longitude, sessionId, userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Active session not found'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Location updated'
+    });
+
+  } catch (error) {
+    console.error('❌ Update live location error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+// ============================================
+// STOP LIVE LOCATION SHARING
+// ============================================
+const stopLiveLocation = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { sessionId } = req.body;
+
+    await db.query(
+      `UPDATE live_location_sessions SET is_active = 0, ended_at = NOW() WHERE id = ? AND user_id = ?`,
+      [sessionId, userId]
+    );
+
+    console.log('🛑 Live location session stopped:', sessionId);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Live location sharing stopped'
+    });
+
+  } catch (error) {
+    console.error('❌ Stop live location error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+// ============================================
+// GET LIVE LOCATION (for guardian)
+// ============================================
+const getLiveLocation = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const guardianId = req.user.userId;
+
+    // Verify guardian relationship
+    const [relationship] = await db.query(
+      `SELECT * FROM guardian_relationships WHERE user_id = ? AND guardian_id = ? AND status = 'accepted'`,
+      [userId, guardianId]
+    );
+
+    if (relationship.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized'
+      });
+    }
+
+    // Get active live location session
+    const [sessions] = await db.query(
+      `SELECT id as session_id, latitude, longitude, started_at, updated_at
+       FROM live_location_sessions
+       WHERE user_id = ? AND is_active = 1
+       ORDER BY started_at DESC
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (sessions.length === 0) {
+      return res.status(200).json({
+        success: true,
+        isSharing: false,
+        location: null
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      isSharing: true,
+      location: sessions[0]
+    });
+
+  } catch (error) {
+    console.error('❌ Get live location error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
 module.exports = {
   startTrip,
   saveGPSPoint,
@@ -509,5 +696,9 @@ module.exports = {
   getGuardianActiveJourneys,
   getGuardianCompletedJourneys,
   getUserJourneyDetails,
-  getTripGPSPoints
+  getTripGPSPoints,
+  startLiveLocation,
+  updateLiveLocation,
+  stopLiveLocation,
+  getLiveLocation
 };

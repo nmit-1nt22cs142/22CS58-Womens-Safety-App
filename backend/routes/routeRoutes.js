@@ -8,7 +8,11 @@ const {
   getGuardianActiveJourneys,
   getGuardianCompletedJourneys,
   getUserJourneyDetails,
-  getTripGPSPoints
+  getTripGPSPoints,
+  startLiveLocation,
+  updateLiveLocation,
+  stopLiveLocation,
+  getLiveLocation
 } = require('../controllers/routeController');
 const authMiddleware = require('../middleware/authMiddleware');
 
@@ -26,5 +30,11 @@ router.get('/guardian/active-journeys', getGuardianActiveJourneys);
 router.get('/guardian/completed-journeys', getGuardianCompletedJourneys);
 router.get('/guardian/user/:userId/journeys', getUserJourneyDetails);
 router.get('/guardian/trip/:tripId/gps-points', getTripGPSPoints);
+
+// Live location sharing
+router.post('/live-location/start', startLiveLocation);
+router.post('/live-location/update', updateLiveLocation);
+router.post('/live-location/stop', stopLiveLocation);
+router.get('/live-location/user/:userId', getLiveLocation);
 
 module.exports = router;

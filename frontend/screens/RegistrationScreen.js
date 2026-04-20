@@ -7,7 +7,8 @@ import {
   ActivityIndicator,
   ScrollView,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Dimensions
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -159,14 +160,17 @@ const RegistrationScreen = ({ navigation }) => {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      enabled={true}
     >
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
+          <Ionicons name="person-add" size={48} color="#FF6B9D" />
           <Text style={styles.title}>Create Account</Text>
           <Text style={styles.subtitle}>Register with your Aadhaar</Text>
         </View>
@@ -232,7 +236,10 @@ const RegistrationScreen = ({ navigation }) => {
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.verifyButtonText}>Verify Aadhaar</Text>
+                <>
+                  <Ionicons name="checkmark" size={18} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.verifyButtonText}>Verify Aadhaar</Text>
+                </>
               )}
             </TouchableOpacity>
           )}
@@ -263,7 +270,10 @@ const RegistrationScreen = ({ navigation }) => {
                 {loading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.verifyButtonText}>Verify OTP</Text>
+                  <>
+                    <Ionicons name="shield-checkmark" size={18} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.verifyButtonText}>Verify OTP</Text>
+                  </>
                 )}
               </TouchableOpacity>
             </>
@@ -311,7 +321,10 @@ const RegistrationScreen = ({ navigation }) => {
                 {loading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.submitButtonText}>Register</Text>
+                  <>
+                    <Ionicons name="person-add" size={20} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.submitButtonText}>Register</Text>
+                  </>
                 )}
               </TouchableOpacity>
             </>
@@ -334,125 +347,159 @@ const RegistrationScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#f5f5f5' 
+    backgroundColor: '#F8F9FA' 
   },
   contentContainer: {
-    padding: 20,
-    paddingBottom: 40,
+    padding: 24,
+    paddingTop: 30,
+    paddingBottom: 60,
+    minHeight: Dimensions.get('window').height,
   },
   header: {
-    marginTop: 20,
-    marginBottom: 20,
+    alignItems: 'center',
+    marginBottom: 32,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 5,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 8,
+    marginTop: 12,
   },
   subtitle: { 
-    fontSize: 16, 
-    color: '#666' 
+    fontSize: 15, 
+    color: '#666',
+    textAlign: 'center',
   },
   form: {
     backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 12,
-    elevation: 3,
+    padding: 28,
+    borderRadius: 16,
+    elevation: 4,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginTop: 20,
-    marginBottom: 16,
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginTop: 28,
+    marginBottom: 20,
+    letterSpacing: 0.3,
   },
   pickerContainer: { 
-    marginBottom: 16 
+    marginBottom: 20 
   },
   label: { 
-    fontSize: 14, 
+    fontSize: 15, 
     fontWeight: '600', 
-    marginBottom: 8, 
-    color: '#333' 
+    marginBottom: 10, 
+    color: '#1a1a1a',
+    letterSpacing: 0.3,
   },
   pickerWrapper: { 
-    borderWidth: 1, 
-    borderColor: '#ddd', 
-    borderRadius: 8, 
-    backgroundColor: '#fff' 
+    borderWidth: 1.5, 
+    borderColor: '#E0E0E0', 
+    borderRadius: 10, 
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
   },
   picker: { 
-    height: 50 
+    height: 50,
+    color: '#1a1a1a',
   },
   otpInfoBox: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#E3F2FD',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 10,
-    marginBottom: 10,
+    padding: 14,
+    borderRadius: 10,
+    marginTop: 12,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#007AFF',
   },
   otpInfoText: {
     fontSize: 14,
     color: '#007AFF',
-    marginLeft: 8,
+    marginLeft: 12,
     flex: 1,
+    fontWeight: '500',
   },
   verifyButton: {
     backgroundColor: '#FF9800',
-    padding: 14,
-    borderRadius: 8,
+    padding: 16,
+    borderRadius: 12,
     alignItems: 'center',
-    marginTop: 10,
+    justifyContent: 'center',
+    marginTop: 16,
+    flexDirection: 'row',
+    elevation: 2,
+    shadowColor: '#FF9800',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
   },
   verifyButtonText: { 
     color: '#fff', 
-    fontSize: 16, 
-    fontWeight: '600' 
+    fontSize: 15, 
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   verifiedContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#E8F5E9',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 10,
+    padding: 14,
+    borderRadius: 10,
+    marginTop: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#4CAF50',
   },
   verifiedText: { 
-    fontSize: 16, 
+    fontSize: 15, 
     color: '#4CAF50', 
-    fontWeight: '600', 
-    marginLeft: 10 
+    fontWeight: '700', 
+    marginLeft: 12,
+    letterSpacing: 0.3,
   },
   submitButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#FF6B9D',
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     alignItems: 'center',
-    marginTop: 20,
+    justifyContent: 'center',
+    marginTop: 28,
+    flexDirection: 'row',
+    elevation: 3,
+    shadowColor: '#FF6B9D',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
   submitButtonText: { 
     color: '#fff', 
     fontSize: 16, 
-    fontWeight: '600' 
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   buttonDisabled: {
-    backgroundColor: '#ccc',
-    opacity: 0.6,
+    backgroundColor: '#D0D0D0',
+    elevation: 0,
+    shadowOpacity: 0,
+    opacity: 1,
   },
   backToLogin: { 
-    marginTop: 20, 
-    alignItems: 'center' 
+    marginTop: 24, 
+    alignItems: 'center',
+    paddingVertical: 16,
   },
   backToLoginText: { 
-    fontSize: 14, 
-    color: '#007AFF' 
+    fontSize: 15, 
+    color: '#FF6B9D',
+    fontWeight: '600',
   },
 });
 

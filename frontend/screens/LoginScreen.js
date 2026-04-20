@@ -7,8 +7,10 @@ import {
   ActivityIndicator,
   ScrollView,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Dimensions
 } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CustomInput from "../components/CustomInput";
 import { loginUser } from "../services/api";
@@ -63,16 +65,19 @@ const LoginScreen = ({ navigation }) => {
   return (
     <KeyboardAvoidingView 
       style={{ flex: 1 }} 
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      enabled={true}
     >
       <ScrollView 
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
+          <Ionicons name="lock-closed" size={48} color="#FF6B9D" />
           <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Login to your account</Text>
+          <Text style={styles.subtitle}>Login to secure your journey</Text>
         </View>
 
         <View style={styles.form}>
@@ -98,14 +103,21 @@ const LoginScreen = ({ navigation }) => {
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color="#fff" size="large" />
             ) : (
-              <Text style={styles.btnText}>Login</Text>
+              <>
+                <Ionicons name="log-in" size={20} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.btnText}>Login</Text>
+              </>
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => navigation.navigate("Registration")}>
-            <Text style={styles.link}>Don't have an account? Register</Text>
+          <TouchableOpacity 
+            onPress={() => navigation.navigate("Registration")}
+            style={styles.linkContainer}
+          >
+            <Text style={styles.link}>Don't have an account? </Text>
+            <Text style={styles.linkBold}>Register here</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -116,55 +128,77 @@ const LoginScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#F8F9FA',
   },
   contentContainer: {
-    padding: 20,
-    paddingTop: 60,
-    paddingBottom: 40,
+    padding: 24,
+    paddingTop: 40,
+    paddingBottom: 60,
+    minHeight: Dimensions.get('window').height,
   },
   header: {
-    marginBottom: 40,
+    alignItems: 'center',
+    marginBottom: 48,
   },
   title: { 
     fontSize: 32, 
     fontWeight: "bold", 
-    color: '#333',
-    marginBottom: 8,
+    color: '#1a1a1a',
+    marginBottom: 12,
+    marginTop: 16,
   },
   subtitle: {
     fontSize: 16,
     color: '#666',
+    textAlign: 'center',
   },
   form: {
     backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 12,
-    elevation: 3,
+    padding: 28,
+    borderRadius: 16,
+    elevation: 4,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
   },
   button: { 
-    backgroundColor: "#007AFF", 
+    backgroundColor: "#FF6B9D", 
     padding: 16, 
-    borderRadius: 8, 
-    marginTop: 20,
+    borderRadius: 12, 
+    marginTop: 28,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    elevation: 3,
+    shadowColor: '#FF6B9D',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
   buttonDisabled: {
-    backgroundColor: "#ccc",
+    backgroundColor: "#D0D0D0",
+    elevation: 0,
+    shadowOpacity: 0,
   },
   btnText: { 
     color: "#fff", 
-    fontWeight: "600",
+    fontWeight: "700",
     fontSize: 16,
+    letterSpacing: 0.5,
+  },
+  linkContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 24,
   },
   link: { 
-    textAlign: "center", 
-    marginTop: 20, 
-    color: "#007AFF",
+    color: "#666",
+    fontSize: 14,
+  },
+  linkBold: {
+    color: "#FF6B9D",
+    fontWeight: "700",
     fontSize: 14,
   },
 });

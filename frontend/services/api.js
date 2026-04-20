@@ -2,8 +2,9 @@ import axios from 'axios';
 import { Platform } from 'react-native';
 
 // ⚠️ IMPORTANT: Update this IP address with your computer's actual IP
-const YOUR_COMPUTER_IP = '10.49.216.52'; // 👈 UPDATE THIS!
-
+const YOUR_COMPUTER_IP = '172.16.9.62'; // 👈 UPDATE THIS!
+// hostel: 172.16.9.62
+//harsha: 10.49.216.52
 const getBaseURL = () => {
   if (Platform.OS === 'web') {
     return 'http://localhost:3000/api';
@@ -382,6 +383,61 @@ export const getTripGPSPoints = async (tripId, token) => {
       headers: {
         'Authorization': `Bearer ${token}`
       }
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+// ============================================
+// Live Location APIs
+// ============================================
+
+// Start live location sharing
+export const startLiveLocation = async (latitude, longitude, token) => {
+  try {
+    const response = await api.post('/routes/live-location/start',
+      { latitude, longitude },
+      { headers: { 'Authorization': `Bearer ${token}` } }
+    );
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+// Update live location
+export const updateLiveLocation = async (sessionId, latitude, longitude, token) => {
+  try {
+    const response = await api.post('/routes/live-location/update',
+      { sessionId, latitude, longitude },
+      { headers: { 'Authorization': `Bearer ${token}` } }
+    );
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+// Stop live location sharing
+export const stopLiveLocation = async (sessionId, token) => {
+  try {
+    const response = await api.post('/routes/live-location/stop',
+      { sessionId },
+      { headers: { 'Authorization': `Bearer ${token}` } }
+    );
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+// Get live location of a user (for guardian)
+export const getLiveLocation = async (userId, token) => {
+  try {
+    const response = await api.get(`/routes/live-location/user/${userId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
     });
     return response.data;
   } catch (error) {

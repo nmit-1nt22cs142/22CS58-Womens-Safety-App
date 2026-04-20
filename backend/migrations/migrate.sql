@@ -13,6 +13,20 @@ CREATE DATABASE IF NOT EXISTS women_safety_db
 
 USE women_safety_db;
 
+
+CREATE TABLE IF NOT EXISTS live_location_sessions (
+  id            INT           NOT NULL AUTO_INCREMENT,
+  user_id       INT           NOT NULL,
+  latitude      DECIMAL(10,7) NOT NULL,
+  longitude     DECIMAL(10,7) NOT NULL,
+  is_active     TINYINT(1)    NOT NULL DEFAULT 1,
+  started_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  ended_at      DATETIME               DEFAULT NULL,
+  PRIMARY KEY (id),
+  KEY idx_lls_user_active (user_id, is_active),
+  CONSTRAINT fk_lls_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 -- ============================================================
 -- 2. SAMPLE AADHAAR DATA
 --    Lookup table used to validate Aadhaar numbers and
