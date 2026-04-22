@@ -12,7 +12,9 @@ const {
   startLiveLocation,
   updateLiveLocation,
   stopLiveLocation,
-  getLiveLocation
+  getLiveLocation,
+  getUserTripHistory,
+  getActiveTrip
 } = require('../controllers/routeController');
 const authMiddleware = require('../middleware/authMiddleware');
 
@@ -23,6 +25,10 @@ router.post('/trip/start', startTrip);
 router.post('/trip/gps-point', saveGPSPoint);
 router.post('/trip/deviation', logDeviationAlert);
 router.post('/trip/end', endTrip);
+
+// User's own journey history
+router.get('/trip/history', getUserTripHistory);
+router.get('/trip/active', getActiveTrip);
 
 // Guardian views
 router.get('/guardian/active-journeys', getGuardianActiveJourneys);

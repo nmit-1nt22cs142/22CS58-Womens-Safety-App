@@ -359,4 +359,31 @@ export const getLiveLocation = async (userId, token) => {
   }
 };
 
+// ============================================
+// USER'S TRIP HISTORY APIS
+// ============================================
+
+export const getUserTripHistory = async (token, limit = 20, offset = 0) => {
+  try {
+    const response = await api.get('/routes/trip/history', {
+      params: { limit, offset },
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
+export const getActiveTrip = async (token) => {
+  try {
+    const response = await api.get('/routes/trip/active', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { success: false, message: 'Network error' };
+  }
+};
+
 export default api;

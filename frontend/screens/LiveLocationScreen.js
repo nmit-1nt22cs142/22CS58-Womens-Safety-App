@@ -1,319 +1,363 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  Linking,
-  Alert,
-  ScrollView,
+  View, Text, StyleSheet, TouchableOpacity,
+  ActivityIndicator, Alert,
 } from 'react-native';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
+import { io } from 'socket.io-client';
 import { getLiveLocation } from '../services/api';
+
+// ⚠️ Must match YOUR_COMPUTER_IP in api.js
+const SOCKET_URL = 'http://192.168.0.105:3000';
 
 export default function LiveLocationScreen({ route, navigation }) {
   const { userId, userName, token } = route.params;
 
   const [isSharing, setIsSharing] = useState(false);
-  const [location, setLocation] = useState(null);
+  const [userLocation, setUserLocation] = useState(null);
+  const [locationHistory, setLocationHistory] = useState([]); // trail of points
   const [loading, setLoading] = useState(true);
+  const [connected, setConnected] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [secondsAgo, setSecondsAgo] = useState(0);
-  const pollIntervalRef = useRef(null);
-  const tickIntervalRef = useRef(null);
+
+  const socketRef = useRef(null);
+  const mapRef = useRef(null);
+  const tickRef = useRef(null);
 
   useEffect(() => {
-    // Initial fetch
-    fetchLocation();
-
-    // Poll backend every 5 seconds
-    pollIntervalRef.current = setInterval(() => {
-      fetchLocation();
-    }, 5000);
-
-    // Tick every second to update "X seconds ago" display
-    tickIntervalRef.current = setInterval(() => {
-      setSecondsAgo((prev) => prev + 1);
-    }, 1000);
+    initScreen();
+    // Tick every second for "X seconds ago" display
+    tickRef.current = setInterval(() => setSecondsAgo(s => s + 1), 1000);
 
     return () => {
-      clearInterval(pollIntervalRef.current);
-      clearInterval(tickIntervalRef.current);
+      clearInterval(tickRef.current);
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
     };
   }, []);
 
-  const fetchLocation = async () => {
+  // ── 1. Check if user is already sharing (REST call) ───────
+  const initScreen = async () => {
     try {
       const response = await getLiveLocation(userId, token);
-      if (response.success) {
-        setIsSharing(response.isSharing);
-        if (response.isSharing && response.location) {
-          setLocation(response.location);
-          setLastUpdated(new Date());
-          setSecondsAgo(0);
-        } else {
-          setLocation(null);
-        }
+      if (response.success && response.isSharing && response.location) {
+        const { latitude, longitude } = response.location;
+        const loc = {
+          latitude: parseFloat(latitude),
+          longitude: parseFloat(longitude),
+        };
+        setUserLocation(loc);
+        setLocationHistory([loc]);
+        setIsSharing(true);
+      } else {
+        setIsSharing(false);
       }
-    } catch (error) {
-      console.error('Error fetching live location:', error);
+    } catch (err) {
+      console.error('Init live location error:', err);
     } finally {
       setLoading(false);
+      // Connect socket regardless — will receive updates if user starts sharing
+      connectSocket();
     }
   };
 
-  const openInGoogleMaps = () => {
-    if (!location) {
-      Alert.alert('No Location', 'Live location is not available right now.');
-      return;
+  // ── 2. Connect to Socket.io and join user's room ──────────
+  const connectSocket = () => {
+    try {
+      const socket = io(SOCKET_URL, {
+        transports: ['websocket'],
+        reconnection: true,
+        reconnectionAttempts: 15,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        forceNew: false,
+      });
+
+      socket.on('connect', () => {
+        console.log('✅ Guardian socket connected:', socket.id);
+        setConnected(true);
+        // Join the sharing user's room to receive their location updates
+        socket.emit('join_as_guardian', { userId });
+        console.log('📍 Emitted join_as_guardian for user:', userId);
+      });
+
+      socket.on('reconnect', () => {
+        console.log('🔄 Guardian socket reconnected');
+        setConnected(true);
+        // Rejoin room after reconnection
+        socket.emit('join_as_guardian', { userId });
+      });
+
+      socket.on('disconnect', (reason) => {
+        console.log('❌ Guardian socket disconnected:', reason);
+        setConnected(false);
+      });
+
+      socket.on('connect_error', (error) => {
+        console.error('🔴 Socket connect error:', error.message || error);
+        setConnected(false);
+      });
+
+      socket.on('error', (error) => {
+        console.error('🔴 Socket error event:', error);
+      });
+
+      // ── Receive real-time location update ──────────────────
+      socket.on('location_update', (data) => {
+        try {
+          const { latitude, longitude, accuracy, timestamp, userId: senderId } = data;
+          
+          if (!latitude || !longitude) {
+            console.warn('⚠️ Invalid location data received:', data);
+            return;
+          }
+
+          const newLoc = {
+            latitude: parseFloat(latitude),
+            longitude: parseFloat(longitude),
+          };
+
+          console.log('📍 Location update from user:', senderId, '→', newLoc);
+
+          setUserLocation(newLoc);
+          setLocationHistory(prev => {
+            const updated = [...prev, newLoc];
+            return updated.slice(-50); // Keep last 50 points as trail
+          });
+          setIsSharing(true);
+          setLastUpdated(new Date());
+          setSecondsAgo(0);
+
+          // Smoothly pan map to new location
+          if (mapRef.current && newLoc.latitude && newLoc.longitude) {
+            mapRef.current.animateToRegion({
+              latitude: newLoc.latitude,
+              longitude: newLoc.longitude,
+              latitudeDelta: 0.008,
+              longitudeDelta: 0.008,
+            }, 600);
+          }
+        } catch (err) {
+          console.error('❌ Error processing location update:', err);
+        }
+      });
+
+      // ── User started sharing ───────────────────────────────
+      socket.on('sharing_started', (data) => {
+        console.log('✅ User started sharing location');
+        setIsSharing(true);
+      });
+
+      // ── User stopped sharing ───────────────────────────────
+      socket.on('sharing_stopped', (data) => {
+        console.log('🛑 User stopped sharing location');
+        setIsSharing(false);
+      });
+
+      socketRef.current = socket;
+    } catch (err) {
+      console.error('❌ Failed to initialize socket:', err);
+      setConnected(false);
     }
-    const { latitude, longitude } = location;
-    // Opens Google Maps with a pin and label — user can navigate/track
-    const url = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
-    Linking.canOpenURL(url).then((supported) => {
-      if (supported) {
-        Linking.openURL(url);
-      } else {
-        const geoUrl = `geo:${latitude},${longitude}?q=${latitude},${longitude}(${encodeURIComponent(userName)})`;
-        Linking.openURL(geoUrl);
-      }
-    });
   };
 
   const formatSecondsAgo = () => {
+    if (!lastUpdated) return 'Waiting…';
     if (secondsAgo < 5) return 'Just now';
     if (secondsAgo < 60) return `${secondsAgo}s ago`;
     return `${Math.floor(secondsAgo / 60)}m ${secondsAgo % 60}s ago`;
   };
 
-  const formatSince = (dateString) => {
-    if (!dateString) return '';
-    return new Date(dateString).toLocaleString('en-US', {
-      month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    });
-  };
+  const initialRegion = userLocation
+    ? { ...userLocation, latitudeDelta: 0.01, longitudeDelta: 0.01 }
+    : { latitude: 12.9716, longitude: 77.5946, latitudeDelta: 0.05, longitudeDelta: 0.05 };
 
   return (
     <View style={styles.container}>
+
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={28} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>{userName}</Text>
-          <Text style={styles.headerSub}>Live Location</Text>
+          <Text style={styles.headerSub}>Live Tracking</Text>
         </View>
-        <TouchableOpacity onPress={fetchLocation} style={styles.refreshBtn}>
-          <Ionicons name="refresh" size={24} color="#fff" />
-        </TouchableOpacity>
+        {/* Connection status dot */}
+        <View style={styles.connStatus}>
+          <View style={[styles.connDot, connected ? styles.connDotGreen : styles.connDotRed]} />
+          <Text style={styles.connText}>{connected ? 'Connected' : 'Reconnecting…'}</Text>
+        </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-
-        {loading ? (
-          <View style={styles.centeredBox}>
-            <ActivityIndicator size="large" color="#FF6B9D" />
-            <Text style={styles.loadingText}>Checking live location…</Text>
-          </View>
-
-        ) : isSharing && location ? (
-          // ── SHARING ACTIVE ──────────────────────────
+      {/* Status bar below header */}
+      <View style={[styles.statusBar, isSharing ? styles.statusBarLive : styles.statusBarOff]}>
+        {isSharing ? (
           <>
-            {/* Status card */}
-            <View style={styles.statusCard}>
-              <View style={styles.statusTopRow}>
-                <View style={styles.liveBadge}>
-                  <View style={styles.liveDot} />
-                  <Text style={styles.liveBadgeText}>LIVE</Text>
-                </View>
-                <Text style={styles.statusName}>{userName} is sharing location</Text>
-              </View>
-
-              {/* Coordinates */}
-              <View style={styles.coordBox}>
-                <Ionicons name="location" size={18} color="#FF6B9D" />
-                <Text style={styles.coordText}>
-                  {parseFloat(location.latitude).toFixed(6)},{'  '}
-                  {parseFloat(location.longitude).toFixed(6)}
-                </Text>
-              </View>
-
-              {/* Timing info */}
-              <View style={styles.timingRow}>
-                <Ionicons name="refresh-circle-outline" size={16} color="#999" />
-                <Text style={styles.timingText}>
-                  Updated {formatSecondsAgo()} · auto-refreshes every 5s
-                </Text>
-              </View>
-
-              {location.started_at && (
-                <View style={styles.timingRow}>
-                  <Ionicons name="time-outline" size={16} color="#999" />
-                  <Text style={styles.timingText}>
-                    Sharing since {formatSince(location.started_at)}
-                  </Text>
-                </View>
-              )}
-
-              {location.trip_id && (
-                <View style={styles.journeyBadge}>
-                  <Ionicons name="navigate" size={14} color="#007AFF" />
-                  <Text style={styles.journeyBadgeText}>During an active journey</Text>
-                </View>
-              )}
-            </View>
-
-            {/* Open in Google Maps */}
-            <TouchableOpacity style={styles.mapsButton} onPress={openInGoogleMaps} activeOpacity={0.85}>
-              <View style={styles.mapsButtonLeft}>
-                <Ionicons name="map" size={26} color="#fff" />
-                <View>
-                  <Text style={styles.mapsButtonTitle}>Open in Google Maps</Text>
-                  <Text style={styles.mapsButtonSub}>Track {userName}'s live position</Text>
-                </View>
-              </View>
-              <Ionicons name="open-outline" size={20} color="rgba(255,255,255,0.8)" />
-            </TouchableOpacity>
-
-            <Text style={styles.mapsHint}>
-              Tap the button above to open Google Maps with {userName}'s current location.
-              Come back here and tap again to get the latest position.
+            <View style={styles.liveDot} />
+            <Text style={styles.statusText}>
+              LIVE · Updated {formatSecondsAgo()}
             </Text>
-
-            {/* Manual refresh */}
-            <TouchableOpacity style={styles.manualRefresh} onPress={fetchLocation}>
-              <Ionicons name="refresh" size={18} color="#007AFF" />
-              <Text style={styles.manualRefreshText}>Refresh Now</Text>
-            </TouchableOpacity>
           </>
-
         ) : (
-          // ── NOT SHARING ──────────────────────────────
-          <View style={styles.centeredBox}>
-            <View style={styles.offlineIcon}>
-              <Ionicons name="location-outline" size={60} color="#ccc" />
-            </View>
-            <Text style={styles.offlineTitle}>No live location</Text>
-            <Text style={styles.offlineSubtext}>
-              {userName} is not currently sharing their live location.
-              {'\n\n'}
-              They can start sharing from the{' '}
-              <Text style={styles.offlineHighlight}>Home screen → Send Location</Text>
-              {' '}button, or it activates automatically when they start a journey.
+          <>
+            <Ionicons name="location-outline" size={14} color="#999" />
+            <Text style={styles.statusTextOff}>
+              {loading ? 'Connecting…' : 'Waiting for location sharing to start…'}
             </Text>
-            <TouchableOpacity style={styles.checkAgainBtn} onPress={fetchLocation}>
-              <Ionicons name="refresh" size={18} color="#007AFF" />
-              <Text style={styles.checkAgainText}>Check Again</Text>
-            </TouchableOpacity>
-          </View>
+          </>
         )}
+      </View>
 
-      </ScrollView>
+      {/* Map — full screen */}
+      {loading ? (
+        <View style={styles.loadingBox}>
+          <ActivityIndicator size="large" color="#FF6B9D" />
+          <Text style={styles.loadingText}>Connecting to live tracking…</Text>
+        </View>
+      ) : (
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          initialRegion={initialRegion}
+          showsUserLocation={false}
+          showsCompass
+          showsScale
+        >
+          {/* User's current position marker */}
+          {userLocation && (
+            <Marker
+              coordinate={userLocation}
+              title={userName}
+              description="Live location"
+              anchor={{ x: 0.5, y: 0.5 }}
+            >
+              {/* Custom pulsing marker */}
+              <View style={styles.markerOuter}>
+                <View style={styles.markerInner}>
+                  <Ionicons name="person" size={16} color="#fff" />
+                </View>
+              </View>
+            </Marker>
+          )}
+
+          {/* Location trail (breadcrumb path) */}
+          {locationHistory.length > 1 && (
+            <Polyline
+              coordinates={locationHistory}
+              strokeColor="#FF6B9D"
+              strokeWidth={3}
+              lineDashPattern={[1]}
+            />
+          )}
+        </MapView>
+      )}
+
+      {/* Bottom info card */}
+      {!loading && (
+        <View style={styles.bottomCard}>
+          {isSharing && userLocation ? (
+            <View style={styles.coordsRow}>
+              <Ionicons name="location" size={16} color="#FF6B9D" />
+              <Text style={styles.coordsText}>
+                {userLocation.latitude.toFixed(5)}, {userLocation.longitude.toFixed(5)}
+              </Text>
+              <Text style={styles.trailText}>{locationHistory.length} pts tracked</Text>
+            </View>
+          ) : (
+            <View style={styles.waitingRow}>
+              <ActivityIndicator size="small" color="#FF6B9D" style={{ marginRight: 8 }} />
+              <Text style={styles.waitingText}>
+                {userName} hasn't started sharing yet.{'\n'}
+                This screen will update automatically when they do.
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F7F7F7' },
+  container: { flex: 1, backgroundColor: '#000' },
 
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20,
+    paddingHorizontal: 16, paddingTop: 56, paddingBottom: 14,
     backgroundColor: '#FF6B9D',
   },
-  backButton: { padding: 4 },
-  refreshBtn: { padding: 4 },
+  backBtn: { padding: 4 },
   headerCenter: { alignItems: 'center', flex: 1 },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
-  headerSub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: '#fff' },
+  headerSub: { fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 1 },
+  connStatus: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  connDot: { width: 8, height: 8, borderRadius: 4 },
+  connDotGreen: { backgroundColor: '#4ADE80' },
+  connDotRed: { backgroundColor: '#FCA5A5' },
+  connText: { fontSize: 10, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
 
-  content: { padding: 20, paddingBottom: 60 },
+  statusBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingVertical: 8, paddingHorizontal: 16,
+  },
+  statusBarLive: { backgroundColor: '#1a1a2e' },
+  statusBarOff: { backgroundColor: '#2a2a2a' },
+  liveDot: {
+    width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF4D4D',
+  },
+  statusText: { fontSize: 12, color: '#FF4D4D', fontWeight: '700', letterSpacing: 0.5 },
+  statusTextOff: { fontSize: 12, color: '#999' },
 
-  centeredBox: {
-    alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 60, backgroundColor: '#fff',
-    borderRadius: 16, marginTop: 10,
+  map: { flex: 1 },
+
+  loadingBox: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#F7F7F7',
   },
   loadingText: { marginTop: 14, fontSize: 15, color: '#666' },
 
-  // Status card
-  statusCard: {
-    backgroundColor: '#fff', borderRadius: 16, padding: 20,
-    marginBottom: 16, elevation: 3,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+  // Custom map marker
+  markerOuter: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: 'rgba(255,107,157,0.25)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: 'rgba(255,107,157,0.5)',
+  },
+  markerInner: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: '#FF6B9D',
+    alignItems: 'center', justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#FF6B9D', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5, shadowRadius: 4,
+  },
+
+  // Bottom card
+  bottomCard: {
+    backgroundColor: '#fff',
+    paddingVertical: 14, paddingHorizontal: 20,
+    borderTopLeftRadius: 16, borderTopRightRadius: 16,
+    elevation: 10,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.1, shadowRadius: 6,
-    borderLeftWidth: 4, borderLeftColor: '#FF4D4D',
   },
-  statusTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 10 },
-  liveBadge: {
+  coordsRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+  },
+  coordsText: {
+    fontSize: 13, color: '#FF6B9D', fontWeight: '600',
+    fontFamily: 'monospace', flex: 1,
+  },
+  trailText: { fontSize: 11, color: '#999' },
+  waitingRow: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#FFEBEE', paddingHorizontal: 10,
-    paddingVertical: 5, borderRadius: 10, gap: 5,
   },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF4D4D' },
-  liveBadgeText: { fontSize: 12, fontWeight: 'bold', color: '#FF4D4D' },
-  statusName: { fontSize: 14, fontWeight: '600', color: '#333', flex: 1 },
-
-  coordBox: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#FFF5F8', padding: 12,
-    borderRadius: 10, marginBottom: 10,
-  },
-  coordText: { fontSize: 13, color: '#FF6B9D', fontWeight: '600', fontFamily: 'monospace' },
-
-  timingRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-  timingText: { fontSize: 12, color: '#999' },
-
-  journeyBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#EBF4FF', paddingVertical: 6,
-    paddingHorizontal: 12, borderRadius: 8, marginTop: 12, alignSelf: 'flex-start',
-  },
-  journeyBadgeText: { fontSize: 13, color: '#007AFF', fontWeight: '600' },
-
-  // Google Maps button
-  mapsButton: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#4285F4', borderRadius: 16,
-    paddingVertical: 18, paddingHorizontal: 20,
-    elevation: 4, shadowColor: '#4285F4',
-    shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8,
-    marginBottom: 14,
-  },
-  mapsButtonLeft: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  mapsButtonTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  mapsButtonSub: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 2 },
-
-  mapsHint: {
-    fontSize: 12, color: '#999', textAlign: 'center',
-    lineHeight: 18, marginBottom: 20, paddingHorizontal: 10,
-  },
-
-  manualRefresh: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingVertical: 14, borderRadius: 12, backgroundColor: '#EBF4FF',
-  },
-  manualRefreshText: { color: '#007AFF', fontSize: 15, fontWeight: '600' },
-
-  // Offline state
-  offlineIcon: {
-    width: 100, height: 100, borderRadius: 50,
-    backgroundColor: '#F5F5F5', alignItems: 'center',
-    justifyContent: 'center', marginBottom: 20,
-  },
-  offlineTitle: { fontSize: 20, fontWeight: '700', color: '#333', marginBottom: 12 },
-  offlineSubtext: {
-    fontSize: 14, color: '#666', textAlign: 'center',
-    lineHeight: 22, paddingHorizontal: 20,
-  },
-  offlineHighlight: { color: '#FF6B9D', fontWeight: '600' },
-  checkAgainBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginTop: 24, paddingVertical: 12, paddingHorizontal: 24,
-    borderRadius: 12, backgroundColor: '#EBF4FF',
-  },
-  checkAgainText: { color: '#007AFF', fontSize: 15, fontWeight: '600' },
+  waitingText: { fontSize: 13, color: '#666', lineHeight: 18, flex: 1 },
 });

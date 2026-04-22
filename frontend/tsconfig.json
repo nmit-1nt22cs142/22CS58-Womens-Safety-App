@@ -35,9 +35,10 @@
     "**/*.jsx"
   ],
   "exclude": [
-    "node_modules",
+    "node_modules/**",
     "dist",
-    "build"
+    "build",
+    "**/node_modules/**"
   ],
   "extends": "expo/tsconfig.base"
 }

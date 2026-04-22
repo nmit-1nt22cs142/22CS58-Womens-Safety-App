@@ -12,6 +12,7 @@ import StartJourneyScreen from "../screens/StartJourneyScreen";
 import TrackRouteScreen from "../screens/TrackRouteScreen";
 import GuardianJourneyViewScreen from '../screens/GuardianJourneyViewScreen';
 import LiveLocationScreen from '../screens/LiveLocationScreen';
+import JourneyHistoryScreen from '../screens/JourneyHistoryScreen';
 import MainLayout from "../components/ui/MainLayout";
 
 const Stack = createStackNavigator();
@@ -45,6 +46,7 @@ export default function AppNavigator() {
       <Stack.Screen name="Settings" component={withLayout(SettingsScreen)} />
 
       {/* JOURNEY SCREENS — full screen, no bottom nav */}
+      <Stack.Screen name="JourneyHistory" component={JourneyHistoryScreen} />
       <Stack.Screen name="StartJourney" component={StartJourneyScreen} />
       <Stack.Screen name="TrackRoute" component={TrackRouteScreen} />
 

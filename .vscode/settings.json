@@ -1,5 +1,16 @@
 {
   "git.ignoreLimitWarning": true,
   "java.configuration.updateBuildConfiguration": "disabled",
-  "java.import.gradle.enabled": false
+  "java.import.gradle.enabled": false,
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "typescript.tsdk": "frontend/node_modules/typescript/lib",
+  "typescript.checkJs": false,
+  "files.exclude": {
+    "node_modules": true,
+    "**/node_modules": true
+  },
+  "search.exclude": {
+    "node_modules": true,
+    "**/node_modules": true
+  }
 }

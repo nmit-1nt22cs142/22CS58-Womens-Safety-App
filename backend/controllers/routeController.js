@@ -553,6 +553,65 @@ const getLiveLocation = async (req, res) => {
   }
 };
 
+// ============================================
+// GET USER'S OWN TRIP HISTORY (for journey history screen)
+// ============================================
+const getUserTripHistory = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const limit = req.query.limit || 20;
+    const offset = req.query.offset || 0;
+
+    const [trips] = await db.query(
+      `SELECT
+        id as trip_id, from_address, to_address, from_latitude, from_longitude,
+        to_latitude, to_longitude, started_at, ended_at, duration, status,
+        polyline_json, deviation_count, total_gps_points
+       FROM trips
+       WHERE user_id = ?
+       ORDER BY started_at DESC
+       LIMIT ? OFFSET ?`,
+      [userId, parseInt(limit), parseInt(offset)]
+    );
+
+    return res.status(200).json({ success: true, trips });
+
+  } catch (error) {
+    console.error('❌ Get user trip history error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ============================================
+// GET USER'S ACTIVE TRIP (if any)
+// ============================================
+const getActiveTrip = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const [trips] = await db.query(
+      `SELECT
+        id as trip_id, from_address, to_address, from_latitude, from_longitude,
+        to_latitude, to_longitude, started_at, polyline_json
+       FROM trips
+       WHERE user_id = ? AND status = 'active'
+       ORDER BY started_at DESC
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (trips.length === 0) {
+      return res.status(200).json({ success: true, hasActiveTrip: false, trip: null });
+    }
+
+    return res.status(200).json({ success: true, hasActiveTrip: true, trip: trips[0] });
+
+  } catch (error) {
+    console.error('❌ Get active trip error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
 module.exports = {
   startTrip,
   saveGPSPoint,
@@ -565,5 +624,7 @@ module.exports = {
   startLiveLocation,
   updateLiveLocation,
   stopLiveLocation,
-  getLiveLocation
+  getLiveLocation,
+  getUserTripHistory,
+  getActiveTrip
 };
