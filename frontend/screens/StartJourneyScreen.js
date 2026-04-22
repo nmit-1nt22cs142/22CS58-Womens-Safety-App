@@ -1,15 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
+  View, Text, StyleSheet, TouchableOpacity, TextInput,
+  Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,17 +21,12 @@ export default function StartJourneyScreen({ navigation }) {
   const [selectingTo, setSelectingTo] = useState(false);
   const [isGeocodingFrom, setIsGeocodingFrom] = useState(false);
   const [region, setRegion] = useState({
-    latitude: 12.9716,
-    longitude: 77.5946,
-    latitudeDelta: 0.05,
-    longitudeDelta: 0.05,
+    latitude: 12.9716, longitude: 77.5946,
+    latitudeDelta: 0.05, longitudeDelta: 0.05,
   });
-
   const mapRef = useRef(null);
 
-  useEffect(() => {
-    initialize();
-  }, []);
+  useEffect(() => { initialize(); }, []);
 
   const initialize = async () => {
     try {
@@ -57,14 +44,12 @@ export default function StartJourneyScreen({ navigation }) {
       setFromLocation({ latitude, longitude });
       setRegion({ latitude, longitude, latitudeDelta: 0.05, longitudeDelta: 0.05 });
 
-      // Reverse geocode to get human-readable address
       setIsGeocodingFrom(true);
       try {
         const address = await reverseGeocode(latitude, longitude);
         setFromAddress(address);
-      } catch (err) {
-        console.error('Reverse geocode error:', err);
-        setFromAddress('My Location'); // Fallback
+      } catch {
+        setFromAddress('My Location');
       } finally {
         setIsGeocodingFrom(false);
       }
@@ -75,22 +60,17 @@ export default function StartJourneyScreen({ navigation }) {
 
   const handleMapPress = (e) => {
     if (!selectingTo) return;
-    const coord = e.nativeEvent.coordinate;
-    setToLocation(coord);
+    setToLocation(e.nativeEvent.coordinate);
     setSelectingTo(false);
   };
 
   const handlePlaceSelected = (placeData) => {
-    // placeData: { address, latitude, longitude, name }
     setToLocation({ latitude: placeData.latitude, longitude: placeData.longitude });
     setToAddress(placeData.address);
-    // Optionally pan map to the selected location
     if (mapRef.current) {
       mapRef.current.animateToRegion({
-        latitude: placeData.latitude,
-        longitude: placeData.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
+        latitude: placeData.latitude, longitude: placeData.longitude,
+        latitudeDelta: 0.05, longitudeDelta: 0.05,
       }, 500);
     }
   };
@@ -101,7 +81,7 @@ export default function StartJourneyScreen({ navigation }) {
       return;
     }
     if (!toLocation) {
-      Alert.alert('Error', 'Tap on the map to set your destination first.');
+      Alert.alert('Error', 'Search or tap the map to set your destination first.');
       return;
     }
     if (!toAddress.trim()) {
@@ -124,6 +104,7 @@ export default function StartJourneyScreen({ navigation }) {
       if (response.success) {
         navigation.replace('TrackRoute', {
           tripId: response.tripId,
+          liveSessionId: response.liveSessionId,
           polyline: response.polyline,
           fromAddress: fromAddress.trim() || 'My Location',
           toAddress: toAddress.trim(),
@@ -146,220 +127,192 @@ export default function StartJourneyScreen({ navigation }) {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
+      style={styles.root}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      enabled={true}
     >
-      <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={28} color="#fff" />
+        </TouchableOpacity>
+        <Text style={styles.title}>Start Journey</Text>
+        <View style={{ width: 28 }} />
+      </View>
 
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={28} color="#fff" />
-          </TouchableOpacity>
-          <Text style={styles.title}>Start Journey</Text>
-          <View style={{ width: 28 }} />
-        </View>
-
-        {/* Map */}
-        <View style={styles.mapContainer}>
-          <MapView
-            ref={mapRef}
-            style={styles.map}
-            region={region}
-            onPress={handleMapPress}
-            showsUserLocation
-            zoomEnabled={true}
-            scrollEnabled={true}
-          >
-            {fromLocation && (
-              <Marker
-                coordinate={fromLocation}
-                pinColor="green"
-                title="You are here"
-              />
-            )}
-            {toLocation && (
-              <Marker
-                coordinate={toLocation}
-                pinColor="red"
-                title={toAddress || 'Destination'}
-                draggable
-                onDragEnd={(e) => setToLocation(e.nativeEvent.coordinate)}
-              />
-            )}
-          </MapView>
-
-          {selectingTo && (
-            <View style={styles.tapHint}>
-              <Text style={styles.tapHintText}>📍 Tap map to set destination</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Form - Scrollable to accommodate dropdown */}
-        <ScrollView 
-          style={styles.formContainer}
-          scrollEnabled={true}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          nestedScrollEnabled={true}
+      {/* Map — fixed height, NOT inside any ScrollView */}
+      <View style={styles.mapContainer}>
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          region={region}
+          onPress={handleMapPress}
+          showsUserLocation
+          zoomEnabled
+          scrollEnabled
         >
-
-          {/* From - Read-only with reverse geocoding indicator */}
-          <View style={styles.inputRow}>
-            <Ionicons name="location" size={22} color="#4CAF50" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              value={fromAddress}
-              editable={false}
-              placeholder="Getting your location..."
-              placeholderTextColor="#B0B0B0"
+          {fromLocation && (
+            <Marker coordinate={fromLocation} pinColor="green" title="You are here" />
+          )}
+          {toLocation && (
+            <Marker
+              coordinate={toLocation}
+              pinColor="red"
+              title={toAddress || 'Destination'}
+              draggable
+              onDragEnd={(e) => setToLocation(e.nativeEvent.coordinate)}
             />
-            {isGeocodingFrom ? (
-              <ActivityIndicator size="small" color="#4CAF50" />
-            ) : fromLocation ? (
-              <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-            ) : (
-              <ActivityIndicator size="small" color="#999" />
-            )}
+          )}
+        </MapView>
+
+        {selectingTo && (
+          <View style={styles.tapHint}>
+            <Text style={styles.tapHintText}>📍 Tap map to set destination</Text>
           </View>
+        )}
+      </View>
 
-          {/* To - Searchable with autocomplete */}
-          <SearchableInput
-            value={toAddress}
-            onChangeText={setToAddress}
-            onPlaceSelected={handlePlaceSelected}
-            placeholder="Search destination (e.g. College, Hospital)"
-            icon="location"
-            iconColor="#FF4D4D"
-            userLocation={fromLocation}
-            showLoadingWhen={loading}
+      {/*
+        ⚠️  IMPORTANT: This is a plain <View>, NOT a <ScrollView>.
+        SearchableInput uses a FlatList internally for the autocomplete dropdown.
+        Nesting FlatList inside ScrollView causes the VirtualizedList warning.
+        Using a plain View here completely fixes that error.
+      */}
+      <View style={styles.formContainer}>
+
+        {/* FROM — read only */}
+        <View style={styles.inputRow}>
+          <Ionicons name="location" size={22} color="#4CAF50" style={styles.inputIcon} />
+          <TextInput
+            style={styles.input}
+            value={fromAddress}
+            editable={false}
+            placeholder="Getting your location..."
+            placeholderTextColor="#B0B0B0"
           />
-
-          {/* Tap-to-set hint button - Alternative method */}
-          {!toLocation && (
-            <TouchableOpacity style={styles.pinHint} onPress={() => setSelectingTo(true)}>
-              <Ionicons name="pin" size={18} color="#007AFF" />
-              <Text style={styles.pinHintText}>Or tap map to pin destination</Text>
-            </TouchableOpacity>
+          {isGeocodingFrom ? (
+            <ActivityIndicator size="small" color="#4CAF50" />
+          ) : fromLocation ? (
+            <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+          ) : (
+            <ActivityIndicator size="small" color="#999" />
           )}
+        </View>
 
-          {/* Start Button */}
-          <TouchableOpacity
-            style={[styles.startButton, (!canStart || loading) && styles.buttonDisabled]}
-            onPress={handleStartJourney}
-            disabled={!canStart || loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" size="large" />
-            ) : (
-              <>
-                <Ionicons name="navigate" size={26} color="#fff" />
-                <Text style={styles.startButtonText}>Start Journey</Text>
-              </>
-            )}
+        {/* TO — SearchableInput with FlatList dropdown */}
+        <SearchableInput
+          value={toAddress}
+          onChangeText={setToAddress}
+          onPlaceSelected={handlePlaceSelected}
+          placeholder="Search destination (e.g. College, Hospital)"
+          icon="location"
+          iconColor="#FF4D4D"
+          userLocation={fromLocation}
+          showLoadingWhen={loading}
+        />
+
+        {/* Tap-map alternative */}
+        {!toLocation && (
+          <TouchableOpacity style={styles.pinHint} onPress={() => setSelectingTo(true)}>
+            <Ionicons name="pin" size={18} color="#007AFF" />
+            <Text style={styles.pinHintText}>Or tap map to pin destination</Text>
           </TouchableOpacity>
+        )}
 
-          {loading && (
-            <Text style={styles.loadingNote}>Getting road route from Google Maps…</Text>
+        {/* Live location notice */}
+        <View style={styles.liveNotice}>
+          <Ionicons name="location" size={15} color="#FF6B9D" />
+          <Text style={styles.liveNoticeText}>
+            Live location will be shared with your guardians automatically during this journey.
+          </Text>
+        </View>
+
+        {/* Start button */}
+        <TouchableOpacity
+          style={[styles.startButton, (!canStart || loading) && styles.buttonDisabled]}
+          onPress={handleStartJourney}
+          disabled={!canStart || loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" size="large" />
+          ) : (
+            <>
+              <Ionicons name="navigate" size={24} color="#fff" />
+              <Text style={styles.startButtonText}>Start Journey</Text>
+            </>
           )}
+        </TouchableOpacity>
 
-        </ScrollView>
+        {loading && (
+          <Text style={styles.loadingNote}>Getting road route & starting live location…</Text>
+        )}
+
       </View>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F9FA' },
+  root: { flex: 1, backgroundColor: '#F8F9FA' },
+
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 16,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingTop: 60, paddingBottom: 16,
     backgroundColor: '#FF6B9D',
-    borderBottomWidth: 0,
-    borderBottomColor: '#eee',
   },
   backButton: { padding: 8 },
   title: { fontSize: 22, fontWeight: '700', color: '#fff' },
-  mapContainer: { height: '50%', position: 'relative', backgroundColor: '#E0E0E0' },
+
+  mapContainer: { height: '42%', position: 'relative' },
   map: { flex: 1 },
   tapHint: {
-    position: 'absolute',
-    bottom: 16,
-    alignSelf: 'center',
+    position: 'absolute', bottom: 16, alignSelf: 'center',
     backgroundColor: 'rgba(0,0,0,0.75)',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 20,
+    paddingHorizontal: 24, paddingVertical: 12, borderRadius: 20,
   },
   tapHintText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+
   formContainer: {
     flex: 1,
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 12,
     backgroundColor: '#fff',
-    zIndex: 0,
   },
+
   inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E0E0E0',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    marginBottom: 16,
-    backgroundColor: '#FAFAFA',
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1.5, borderColor: '#E0E0E0', borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 14,
+    marginBottom: 14, backgroundColor: '#FAFAFA',
   },
   inputIcon: { marginRight: 12 },
-  input: { 
-    flex: 1, 
-    fontSize: 16, 
-    color: '#1a1a1a',
-    fontWeight: '500',
-  },
+  input: { flex: 1, fontSize: 16, color: '#1a1a1a', fontWeight: '500' },
+
   pinHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    marginBottom: 12,
-    marginTop: -4,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 6, paddingHorizontal: 4, marginBottom: 10, marginTop: -6,
   },
   pinHintText: { color: '#007AFF', fontSize: 14, fontWeight: '600' },
+
+  liveNotice: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: '#FFF0F5', padding: 10, borderRadius: 10,
+    marginBottom: 14, borderLeftWidth: 3, borderLeftColor: '#FF6B9D',
+  },
+  liveNoticeText: { fontSize: 12, color: '#FF6B9D', fontWeight: '500', flex: 1, lineHeight: 17 },
+
   startButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    backgroundColor: '#FF6B9D',
-    borderRadius: 14,
-    paddingVertical: 16,
-    marginTop: 12,
-    marginBottom: 20,
-    elevation: 3,
-    shadowColor: '#FF6B9D',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, backgroundColor: '#FF6B9D', borderRadius: 14,
+    paddingVertical: 15, elevation: 3,
+    shadowColor: '#FF6B9D', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 8,
   },
-  buttonDisabled: { 
-    backgroundColor: '#D0D0D0', 
-    elevation: 0,
-    shadowOpacity: 0,
-  },
-  startButtonText: { color: '#fff', fontSize: 18, fontWeight: '700', letterSpacing: 0.3 },
+  buttonDisabled: { backgroundColor: '#D0D0D0', elevation: 0, shadowOpacity: 0 },
+  startButtonText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+
   loadingNote: {
-    textAlign: 'center',
-    color: '#666',
-    fontSize: 13,
-    marginTop: 8,
-    marginBottom: 16,
-    fontWeight: '500',
+    textAlign: 'center', color: '#666', fontSize: 12,
+    marginTop: 10, fontWeight: '500',
   },
 });

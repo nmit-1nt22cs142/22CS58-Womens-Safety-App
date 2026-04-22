@@ -1,10 +1,10 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
 
-// ⚠️ IMPORTANT: Update this IP address with your computer's actual IP
-const YOUR_COMPUTER_IP = '172.16.9.62'; // 👈 UPDATE THIS!
+const YOUR_COMPUTER_IP = '192.168.0.105'; // 👈 UPDATE THIS!
 // hostel: 172.16.9.62
-//harsha: 10.49.216.52
+// harsha: 10.49.216.52
+// adarsh home:192.168.0.101
 const getBaseURL = () => {
   if (Platform.OS === 'web') {
     return 'http://localhost:3000/api';
@@ -21,12 +21,9 @@ console.log('🖥️ Platform:', Platform.OS);
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 });
 
-// Request interceptor for logging
 api.interceptors.request.use(
   (config) => {
     console.log(`📤 API Request: ${config.method.toUpperCase()} ${config.url}`);
@@ -38,7 +35,6 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor for logging
 api.interceptors.response.use(
   (response) => {
     console.log(`✅ API Response: ${response.config.url}`, response.data);
@@ -57,54 +53,38 @@ api.interceptors.response.use(
 // Authentication APIs
 // ============================================
 
-// Aadhaar verification
 export const verifyAadhaar = async (aadhaarNumber) => {
   try {
-    console.log('🔍 Verifying Aadhaar:', aadhaarNumber);
     const response = await api.post('/aadhaar/verify-aadhaar', { aadhaarNumber });
     return response.data;
   } catch (error) {
-    console.error('❌ Aadhaar verification error:', error);
     throw error.response?.data || { success: false, message: 'Network error. Check if backend is running.' };
   }
 };
 
-// OTP verification
 export const verifyOTP = async (aadhaarNumber, otp) => {
   try {
-    console.log('🔍 Verifying OTP:', { aadhaarNumber, otp });
     const response = await api.post('/aadhaar/verify-otp', { aadhaarNumber, otp });
     return response.data;
   } catch (error) {
-    console.error('❌ OTP verification error:', error);
     throw error.response?.data || { success: false, message: 'Network error. Check if backend is running.' };
   }
 };
 
-// User registration
 export const registerUser = async (userData) => {
   try {
-    console.log('📝 Registering user:', userData);
     const response = await api.post('/auth/register', userData);
-    console.log('✅ Registration response:', response.data);
     return response.data;
   } catch (error) {
-    console.error('❌ Registration error:', error);
-    console.error('❌ Error response:', error.response?.data);
     throw error.response?.data || { success: false, message: 'Network error. Check if backend is running.' };
   }
 };
 
-// User login (USERNAME + PASSWORD)
 export const loginUser = async (username, password) => {
   try {
-    console.log('🔐 Logging in with username:', username);
     const response = await api.post('/auth/login', { username, password });
-    console.log('✅ Login response:', response.data);
     return response.data;
   } catch (error) {
-    console.error('❌ Login error:', error);
-    console.error('❌ Error response:', error.response?.data);
     throw error.response?.data || { success: false, message: 'Network error. Check if backend is running.' };
   }
 };
@@ -113,16 +93,11 @@ export const loginUser = async (username, password) => {
 // Guardian APIs
 // ============================================
 
-// Send guardian request
 export const sendGuardianRequest = async (guardianUsername, token) => {
   try {
-    const response = await api.post('/guardian/request', 
+    const response = await api.post('/guardian/request',
       { guardianUsername },
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      }
+      { headers: { 'Authorization': `Bearer ${token}` } }
     );
     return response.data;
   } catch (error) {
@@ -130,13 +105,10 @@ export const sendGuardianRequest = async (guardianUsername, token) => {
   }
 };
 
-// Get pending guardian requests
 export const getPendingGuardianRequests = async (token) => {
   try {
     const response = await api.get('/guardian/requests/pending', {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      headers: { 'Authorization': `Bearer ${token}` }
     });
     return response.data;
   } catch (error) {
@@ -144,16 +116,11 @@ export const getPendingGuardianRequests = async (token) => {
   }
 };
 
-// Respond to guardian request
 export const respondToGuardianRequest = async (requestId, action, token) => {
   try {
-    const response = await api.post('/guardian/requests/respond', 
+    const response = await api.post('/guardian/requests/respond',
       { requestId, action },
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      }
+      { headers: { 'Authorization': `Bearer ${token}` } }
     );
     return response.data;
   } catch (error) {
@@ -161,13 +128,10 @@ export const respondToGuardianRequest = async (requestId, action, token) => {
   }
 };
 
-// Get my guardians
 export const getMyGuardians = async (token) => {
   try {
     const response = await api.get('/guardian/my-guardians', {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      headers: { 'Authorization': `Bearer ${token}` }
     });
     return response.data;
   } catch (error) {
@@ -175,13 +139,10 @@ export const getMyGuardians = async (token) => {
   }
 };
 
-// Get people I'm guarding
 export const getPeopleImGuarding = async (token) => {
   try {
     const response = await api.get('/guardian/people-im-guarding', {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      headers: { 'Authorization': `Bearer ${token}` }
     });
     return response.data;
   } catch (error) {
@@ -189,14 +150,11 @@ export const getPeopleImGuarding = async (token) => {
   }
 };
 
-// Remove guardian
 export const removeGuardian = async (guardianId, token) => {
   try {
     const response = await api.delete('/guardian/remove', {
       data: { guardianId },
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      headers: { 'Authorization': `Bearer ${token}` }
     });
     return response.data;
   } catch (error) {
@@ -204,16 +162,11 @@ export const removeGuardian = async (guardianId, token) => {
   }
 };
 
-// Trigger danger alert
 export const triggerDangerAlert = async (latitude, longitude, message, token) => {
   try {
-    const response = await api.post('/guardian/danger-alert', 
+    const response = await api.post('/guardian/danger-alert',
       { latitude, longitude, message },
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      }
+      { headers: { 'Authorization': `Bearer ${token}` } }
     );
     return response.data;
   } catch (error) {
@@ -221,13 +174,10 @@ export const triggerDangerAlert = async (latitude, longitude, message, token) =>
   }
 };
 
-// Get alerts for guardian
 export const getAlertsForGuardian = async (token) => {
   try {
     const response = await api.get('/guardian/alerts', {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      headers: { 'Authorization': `Bearer ${token}` }
     });
     return response.data;
   } catch (error) {
@@ -235,16 +185,11 @@ export const getAlertsForGuardian = async (token) => {
   }
 };
 
-// Mark alert as seen
 export const markAlertAsSeen = async (alertId, token) => {
   try {
-    const response = await api.post('/guardian/alerts/mark-seen', 
+    const response = await api.post('/guardian/alerts/mark-seen',
       { alertId },
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      }
+      { headers: { 'Authorization': `Bearer ${token}` } }
     );
     return response.data;
   } catch (error) {
@@ -252,13 +197,10 @@ export const markAlertAsSeen = async (alertId, token) => {
   }
 };
 
-// Get user details
 export const getUserDetails = async (userId, token) => {
   try {
     const response = await api.get(`/guardian/user/${userId}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      headers: { 'Authorization': `Bearer ${token}` }
     });
     return response.data;
   } catch (error) {
@@ -267,10 +209,9 @@ export const getUserDetails = async (userId, token) => {
 };
 
 // ============================================
-// Route/Geofencing APIs
+// Route / Trip APIs
 // ============================================
 
-// Start journey (on-demand — no saved route needed)
 export const startTrip = async (fromAddress, toAddress, fromLatitude, fromLongitude, toLatitude, toLongitude, token) => {
   try {
     const response = await api.post('/routes/trip/start',
@@ -283,16 +224,11 @@ export const startTrip = async (fromAddress, toAddress, fromLatitude, fromLongit
   }
 };
 
-// Save GPS point
 export const saveGPSPoint = async (tripId, latitude, longitude, accuracy, token) => {
   try {
     const response = await api.post('/routes/trip/gps-point',
       { tripId, latitude, longitude, accuracy },
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      }
+      { headers: { 'Authorization': `Bearer ${token}` } }
     );
     return response.data;
   } catch (error) {
@@ -300,16 +236,11 @@ export const saveGPSPoint = async (tripId, latitude, longitude, accuracy, token)
   }
 };
 
-// Log deviation alert
 export const logDeviationAlert = async (tripId, deviationPercentage, latitude, longitude, userResponse, token) => {
   try {
     const response = await api.post('/routes/trip/deviation',
       { tripId, deviationPercentage, latitude, longitude, userResponse },
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      }
+      { headers: { 'Authorization': `Bearer ${token}` } }
     );
     return response.data;
   } catch (error) {
@@ -317,16 +248,11 @@ export const logDeviationAlert = async (tripId, deviationPercentage, latitude, l
   }
 };
 
-// End trip
 export const endTrip = async (tripId, token) => {
   try {
     const response = await api.post('/routes/trip/end',
       { tripId },
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      }
+      { headers: { 'Authorization': `Bearer ${token}` } }
     );
     return response.data;
   } catch (error) {
@@ -334,13 +260,10 @@ export const endTrip = async (tripId, token) => {
   }
 };
 
-// Get guardian active journeys
 export const getGuardianActiveJourneys = async (token) => {
   try {
     const response = await api.get('/routes/guardian/active-journeys', {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      headers: { 'Authorization': `Bearer ${token}` }
     });
     return response.data;
   } catch (error) {
@@ -348,13 +271,10 @@ export const getGuardianActiveJourneys = async (token) => {
   }
 };
 
-// Get guardian completed journeys
 export const getGuardianCompletedJourneys = async (token) => {
   try {
     const response = await api.get('/routes/guardian/completed-journeys', {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      headers: { 'Authorization': `Bearer ${token}` }
     });
     return response.data;
   } catch (error) {
@@ -362,13 +282,10 @@ export const getGuardianCompletedJourneys = async (token) => {
   }
 };
 
-// Get user journey details (for guardian)
 export const getUserJourneyDetails = async (userId, token) => {
   try {
     const response = await api.get(`/routes/guardian/user/${userId}/journeys`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      headers: { 'Authorization': `Bearer ${token}` }
     });
     return response.data;
   } catch (error) {
@@ -376,13 +293,10 @@ export const getUserJourneyDetails = async (userId, token) => {
   }
 };
 
-// Get trip GPS points
 export const getTripGPSPoints = async (tripId, token) => {
   try {
     const response = await api.get(`/routes/guardian/trip/${tripId}/gps-points`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      headers: { 'Authorization': `Bearer ${token}` }
     });
     return response.data;
   } catch (error) {
@@ -394,7 +308,7 @@ export const getTripGPSPoints = async (tripId, token) => {
 // Live Location APIs
 // ============================================
 
-// Start live location sharing
+// Start standalone live location sharing (from HomeScreen)
 export const startLiveLocation = async (latitude, longitude, token) => {
   try {
     const response = await api.post('/routes/live-location/start',
@@ -407,7 +321,7 @@ export const startLiveLocation = async (latitude, longitude, token) => {
   }
 };
 
-// Update live location
+// Push a location update every 5 seconds
 export const updateLiveLocation = async (sessionId, latitude, longitude, token) => {
   try {
     const response = await api.post('/routes/live-location/update',
@@ -420,7 +334,7 @@ export const updateLiveLocation = async (sessionId, latitude, longitude, token) 
   }
 };
 
-// Stop live location sharing
+// Stop sharing
 export const stopLiveLocation = async (sessionId, token) => {
   try {
     const response = await api.post('/routes/live-location/stop',
@@ -433,7 +347,7 @@ export const stopLiveLocation = async (sessionId, token) => {
   }
 };
 
-// Get live location of a user (for guardian)
+// Guardian polls this every 5 seconds
 export const getLiveLocation = async (userId, token) => {
   try {
     const response = await api.get(`/routes/live-location/user/${userId}`, {

@@ -16,10 +16,9 @@ const {
 } = require('../controllers/routeController');
 const authMiddleware = require('../middleware/authMiddleware');
 
-// All routes require authentication
 router.use(authMiddleware);
 
-// Trip management (on-demand journeys)
+// Trip management
 router.post('/trip/start', startTrip);
 router.post('/trip/gps-point', saveGPSPoint);
 router.post('/trip/deviation', logDeviationAlert);
@@ -31,7 +30,7 @@ router.get('/guardian/completed-journeys', getGuardianCompletedJourneys);
 router.get('/guardian/user/:userId/journeys', getUserJourneyDetails);
 router.get('/guardian/trip/:tripId/gps-points', getTripGPSPoints);
 
-// Live location sharing
+// Live location (standalone sharing from HomeScreen)
 router.post('/live-location/start', startLiveLocation);
 router.post('/live-location/update', updateLiveLocation);
 router.post('/live-location/stop', stopLiveLocation);

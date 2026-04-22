@@ -17,6 +17,7 @@ USE women_safety_db;
 CREATE TABLE IF NOT EXISTS live_location_sessions (
   id            INT           NOT NULL AUTO_INCREMENT,
   user_id       INT           NOT NULL,
+  trip_id       INT                    DEFAULT NULL COMMENT 'NULL = standalone share, set = journey share',
   latitude      DECIMAL(10,7) NOT NULL,
   longitude     DECIMAL(10,7) NOT NULL,
   is_active     TINYINT(1)    NOT NULL DEFAULT 1,
@@ -25,7 +26,8 @@ CREATE TABLE IF NOT EXISTS live_location_sessions (
   ended_at      DATETIME               DEFAULT NULL,
   PRIMARY KEY (id),
   KEY idx_lls_user_active (user_id, is_active),
-  CONSTRAINT fk_lls_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+  CONSTRAINT fk_lls_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+  CONSTRAINT fk_lls_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 -- ============================================================
 -- 2. SAMPLE AADHAAR DATA

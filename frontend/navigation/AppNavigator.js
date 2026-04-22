@@ -8,10 +8,10 @@ import CommunityScreen from "../screens/CommunityScreen";
 import GuardianScreen from "../screens/GuardianScreen";
 import HelpScreen from "../screens/HelpScreen";
 import SettingsScreen from "../screens/SettingsScreen";
-import GeofencingScreen from "../screens/GeofencingScreen";
 import StartJourneyScreen from "../screens/StartJourneyScreen";
 import TrackRouteScreen from "../screens/TrackRouteScreen";
 import GuardianJourneyViewScreen from '../screens/GuardianJourneyViewScreen';
+import LiveLocationScreen from '../screens/LiveLocationScreen';
 import MainLayout from "../components/ui/MainLayout";
 
 const Stack = createStackNavigator();
@@ -37,17 +37,20 @@ export default function AppNavigator() {
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Registration" component={RegistrationScreen} />
 
-      {/* MAIN APP SCREENS WITH LAYOUT */}
+      {/* MAIN APP SCREENS WITH BOTTOM NAV */}
       <Stack.Screen name="Home" component={withLayout(HomeScreen)} />
       <Stack.Screen name="Community" component={withLayout(CommunityScreen)} />
       <Stack.Screen name="Guardian" component={withLayout(GuardianScreen)} />
       <Stack.Screen name="Help" component={withLayout(HelpScreen)} />
       <Stack.Screen name="Settings" component={withLayout(SettingsScreen)} />
 
-      {/* JOURNEY SCREENS WITHOUT LAYOUT */}
+      {/* JOURNEY SCREENS — full screen, no bottom nav */}
       <Stack.Screen name="StartJourney" component={StartJourneyScreen} />
       <Stack.Screen name="TrackRoute" component={TrackRouteScreen} />
+
+      {/* GUARDIAN SCREENS — full screen, no bottom nav */}
       <Stack.Screen name="GuardianJourneyView" component={GuardianJourneyViewScreen} />
+      <Stack.Screen name="LiveLocation" component={LiveLocationScreen} />
     </Stack.Navigator>
   );
 }
