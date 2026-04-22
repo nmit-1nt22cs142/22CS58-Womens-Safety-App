@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,48 +8,65 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Dimensions
+  Dimensions,
+  StatusBar,
+  Animated,
+  TextInput,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import CustomInput from '../components/CustomInput';
 import { verifyAadhaar, verifyOTP, registerUser } from '../services/api';
+import { colors, gradients } from '../styles/colors';
 
-const RegistrationScreen = ({ navigation }) => {
-  // Step 1 info
+const { width } = Dimensions.get('window');
+
+export default function RegistrationScreen({ navigation }) {
+  // ── Step 1 info ──
   const [name, setName] = useState('');
   const [gender, setGender] = useState('Male');
   const [dob, setDob] = useState('');
   const [email, setEmail] = useState('');
   const [aadhaarNumber, setAadhaarNumber] = useState('');
 
-  // Step 2
+  // ── Step 2 ──
   const [otp, setOtp] = useState('');
   const [isAadhaarVerified, setIsAadhaarVerified] = useState(false);
   const [mobileNumber, setMobileNumber] = useState('');
   const [showOtpInput, setShowOtpInput] = useState(false);
 
-  // Step 3
+  // ── Step 3 ──
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
+  const [focusedField, setFocusedField] = useState(null);
 
+  // ── Entrance animation ──
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 700, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  // ── Handlers (unchanged logic) ──────────────────────────────────────────
   const handleVerifyAadhaar = async () => {
     console.log('🔍 Verify Aadhaar clicked');
-    
     if (!aadhaarNumber || aadhaarNumber.length !== 12) {
       alert('Please enter a valid 12-digit Aadhaar number');
       return;
     }
-
     setLoading(true);
     try {
       console.log('📤 Sending Aadhaar verification request:', aadhaarNumber);
       const response = await verifyAadhaar(aadhaarNumber);
       console.log('📥 Aadhaar verification response:', response);
-
       if (response.success) {
         setShowOtpInput(true);
         alert(`OTP sent to ${response.mobileNumber}`);
@@ -64,18 +81,15 @@ const RegistrationScreen = ({ navigation }) => {
 
   const handleVerifyOTP = async () => {
     console.log('🔐 Verify OTP clicked');
-    
     if (!otp || otp.length !== 6) {
       alert('Enter valid 6-digit OTP');
       return;
     }
-
     setLoading(true);
     try {
       console.log('📤 Sending OTP verification request');
       const response = await verifyOTP(aadhaarNumber, otp);
       console.log('📥 OTP verification response:', response);
-
       if (response.success) {
         setIsAadhaarVerified(true);
         setMobileNumber(response.mobileNumber);
@@ -91,61 +105,39 @@ const RegistrationScreen = ({ navigation }) => {
 
   const handleRegister = async () => {
     console.log('📝 Register button clicked');
-    
-    // Validation
     if (!name || !gender || !dob || !email || !username || !password || !confirmPassword) {
       alert('Please fill in all fields');
       return;
     }
-
     if (!email.endsWith('@gmail.com')) {
       alert('Email must end with @gmail.com');
       return;
     }
-
-    // Validate date format
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
       alert('Date must be in YYYY-MM-DD format (e.g., 1990-01-01)');
       return;
     }
-
     if (password !== confirmPassword) {
       alert('Passwords do not match');
       return;
     }
-
     if (password.length < 6) {
       alert('Password must be at least 6 characters');
       return;
     }
-
     if (!isAadhaarVerified) {
       alert('Please verify your Aadhaar first');
       return;
     }
-
     setLoading(true);
     try {
-      const userData = {
-        name,
-        gender,
-        dob,
-        email,
-        aadhaarNumber,
-        username,
-        password,
-      };
-
+      const userData = { name, gender, dob, email, aadhaarNumber, username, password };
       console.log('📤 Sending registration data:', userData);
       const response = await registerUser(userData);
       console.log('📥 Registration response:', response);
-
       if (response.success) {
         alert('Registration successful! Please login.');
-        
-        setTimeout(() => {
-          navigation.replace('Login');
-        }, 100);
+        setTimeout(() => navigation.replace('Login'), 100);
       } else {
         alert(response.message || 'Registration failed');
       }
@@ -156,351 +148,517 @@ const RegistrationScreen = ({ navigation }) => {
       setLoading(false);
     }
   };
+  // ────────────────────────────────────────────────────────────────────────
+
+  // ── Reusable styled input (same look as RegisterScreen) ─────────────────
+  const renderInput = (icon, placeholder, value, setter, options = {}) => (
+    <View
+      style={[
+        styles.inputWrapper,
+        focusedField === placeholder && styles.inputFocused,
+      ]}
+    >
+      <Ionicons
+        name={icon}
+        size={20}
+        color={focusedField === placeholder ? colors.primary : colors.textLight}
+        style={styles.inputIcon}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textLight}
+        value={value}
+        onChangeText={setter}
+        onFocus={() => setFocusedField(placeholder)}
+        onBlur={() => setFocusedField(null)}
+        {...options}
+        secureTextEntry={options.secureTextEntry ? !showPassword : false}
+      />
+      {options.secureTextEntry !== undefined && (
+        <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+          <Ionicons
+            name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+            size={20}
+            color={colors.textLight}
+          />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  // ── Section heading ──────────────────────────────────────────────────────
+  const SectionTitle = ({ title, icon }) => (
+    <View style={styles.sectionHeader}>
+      <Ionicons name={icon} size={16} color={colors.primary} />
+      <Text style={styles.sectionTitle}>{title}</Text>
+    </View>
+  );
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      enabled={true}
-    >
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+
+      {/* Full-screen gradient background */}
+      <LinearGradient
+        colors={gradients.primary}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {/* Decorative circles */}
+      <View style={[styles.circle, { width: 200, height: 200, top: -60, right: -60 }]} />
+      <View style={[styles.circle, { width: 130, height: 130, bottom: 120, left: -50 }]} />
+
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        enabled
       >
-        <View style={styles.header}>
-          <Ionicons name="person-add" size={48} color="#FF6B9D" />
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Register with your Aadhaar</Text>
-        </View>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Back button */}
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
 
-        <View style={styles.form}>
-          <Text style={styles.sectionTitle}>Personal Information</Text>
+          {/* Header */}
+          <Animated.View
+            style={[styles.header, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+          >
+            <Text style={styles.headerTitle}>Create Account</Text>
+            <Text style={styles.headerSubtitle}>
+              Register with your Aadhaar to get started
+            </Text>
+          </Animated.View>
 
-          <CustomInput
-            label="Full Name"
-            value={name}
-            onChangeText={setName}
-            placeholder="Enter your full name"
-          />
+          {/* Form Card */}
+          <Animated.View
+            style={[styles.formCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+          >
+            {/* Safety / verification notice */}
+            <View style={styles.safetyNotice}>
+              <Ionicons name="shield-checkmark" size={18} color={colors.success} />
+              <Text style={styles.safetyNoticeText}>
+                Aadhaar verification required to ensure community safety
+              </Text>
+            </View>
 
-          <View style={styles.pickerContainer}>
-            <Text style={styles.label}>Gender</Text>
-            <View style={styles.pickerWrapper}>
-              <Picker 
-                selectedValue={gender} 
-                onValueChange={setGender} 
+            {/* ── Personal Information ─────────────────────────────────── */}
+            <SectionTitle title="Personal Information" icon="person-outline" />
+
+            {renderInput('person-outline', 'Full Name', name, setName, {
+              autoCapitalize: 'words',
+            })}
+
+            {/* Gender picker styled to match card */}
+            <View style={styles.pickerLabel}>
+              <Ionicons name="transgender-outline" size={16} color={colors.textSecondary} />
+              <Text style={styles.pickerLabelText}>Gender</Text>
+            </View>
+            <View
+              style={[
+                styles.inputWrapper,
+                { paddingHorizontal: 8, height: 52 },
+              ]}
+            >
+              <Ionicons
+                name="chevron-down-outline"
+                size={18}
+                color={colors.textLight}
+                style={{ marginRight: 4 }}
+              />
+              <Picker
+                selectedValue={gender}
+                onValueChange={setGender}
                 style={styles.picker}
+                dropdownIconColor={colors.primary}
               >
                 <Picker.Item label="Male" value="Male" />
                 <Picker.Item label="Female" value="Female" />
                 <Picker.Item label="Other" value="Other" />
               </Picker>
             </View>
-          </View>
 
-          <CustomInput
-            label="Date of Birth"
-            value={dob}
-            onChangeText={setDob}
-            placeholder="YYYY-MM-DD (e.g., 1990-01-01)"
-          />
+            {renderInput('calendar-outline', 'Date of Birth (YYYY-MM-DD)', dob, setDob)}
 
-          <CustomInput
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="yourname@gmail.com"
-            keyboardType="email-address"
-          />
+            {renderInput('mail-outline', 'Email address', email, setEmail, {
+              keyboardType: 'email-address',
+              autoCapitalize: 'none',
+            })}
 
-          <Text style={styles.sectionTitle}>Aadhaar Verification</Text>
+            {/* ── Aadhaar Verification ────────────────────────────────── */}
+            <SectionTitle title="Aadhaar Verification" icon="card-outline" />
 
-          <CustomInput
-            label="Aadhaar Number"
-            value={aadhaarNumber}
-            onChangeText={setAadhaarNumber}
-            placeholder="Enter 12-digit Aadhaar number"
-            keyboardType="number-pad"
-            maxLength={12}
-            editable={!isAadhaarVerified}
-          />
+            {renderInput('card-outline', 'Aadhaar Number (12 digits)', aadhaarNumber, setAadhaarNumber, {
+              keyboardType: 'number-pad',
+              maxLength: 12,
+              editable: !isAadhaarVerified,
+            })}
 
-          {!showOtpInput && !isAadhaarVerified && (
-            <TouchableOpacity 
-              style={[styles.verifyButton, loading && styles.buttonDisabled]} 
-              onPress={handleVerifyAadhaar}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <>
-                  <Ionicons name="checkmark" size={18} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.verifyButtonText}>Verify Aadhaar</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
+            {!showOtpInput && !isAadhaarVerified && (
+              <TouchableOpacity
+                onPress={handleVerifyAadhaar}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                <LinearGradient
+                  colors={loading ? ['#ccc', '#bbb'] : ['#FF9800', '#F57C00']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.actionButton}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                      <Text style={styles.actionButtonText}>Verify Aadhaar</Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
 
-          {showOtpInput && !isAadhaarVerified && (
-            <>
-              <View style={styles.otpInfoBox}>
-                <Ionicons name="information-circle" size={20} color="#007AFF" />
-                <Text style={styles.otpInfoText}>
-                  Check your backend terminal for the OTP
-                </Text>
+            {showOtpInput && !isAadhaarVerified && (
+              <>
+                <View style={styles.otpInfoBox}>
+                  <Ionicons name="information-circle" size={20} color="#007AFF" />
+                  <Text style={styles.otpInfoText}>
+                    Check your backend terminal for the OTP
+                  </Text>
+                </View>
+
+                {renderInput('keypad-outline', 'Enter OTP (6 digits)', otp, setOtp, {
+                  keyboardType: 'number-pad',
+                  maxLength: 6,
+                })}
+
+                <TouchableOpacity
+                  onPress={handleVerifyOTP}
+                  disabled={loading}
+                  activeOpacity={0.85}
+                >
+                  <LinearGradient
+                    colors={loading ? ['#ccc', '#bbb'] : ['#FF9800', '#F57C00']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.actionButton}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons name="shield-checkmark-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                        <Text style={styles.actionButtonText}>Verify OTP</Text>
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {isAadhaarVerified && (
+              <View style={styles.verifiedBanner}>
+                <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+                <Text style={styles.verifiedText}>Aadhaar Verified ✓</Text>
               </View>
+            )}
 
-              <CustomInput
-                label="Enter OTP"
-                value={otp}
-                onChangeText={setOtp}
-                placeholder="Enter 6-digit OTP"
-                keyboardType="number-pad"
-                maxLength={6}
-              />
+            {/* ── Account Credentials (shown only after Aadhaar verified) ── */}
+            {isAadhaarVerified && (
+              <>
+                <SectionTitle title="Account Credentials" icon="lock-closed-outline" />
 
-              <TouchableOpacity 
-                style={[styles.verifyButton, loading && styles.buttonDisabled]} 
-                onPress={handleVerifyOTP}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <>
-                    <Ionicons name="shield-checkmark" size={18} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={styles.verifyButtonText}>Verify OTP</Text>
-                  </>
+                {renderInput('at-outline', 'Username', username, setUsername, {
+                  autoCapitalize: 'none',
+                })}
+
+                {renderInput('lock-closed-outline', 'Password', password, setPassword, {
+                  secureTextEntry: true,
+                })}
+
+                {renderInput('lock-closed-outline', 'Confirm Password', confirmPassword, setConfirmPassword, {
+                  secureTextEntry: true,
+                })}
+
+                {password && confirmPassword && password !== confirmPassword && (
+                  <Text style={styles.errorText}>Passwords do not match</Text>
                 )}
-              </TouchableOpacity>
-            </>
-          )}
 
-          {isAadhaarVerified && (
-            <View style={styles.verifiedContainer}>
-              <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
-              <Text style={styles.verifiedText}>Aadhaar Verified ✓</Text>
-            </View>
-          )}
+                {/* Register button */}
+                <TouchableOpacity
+                  onPress={handleRegister}
+                  disabled={loading}
+                  activeOpacity={0.85}
+                >
+                  <LinearGradient
+                    colors={loading ? ['#ccc', '#bbb'] : gradients.primary}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[styles.actionButton, styles.registerButton]}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <>
+                        <Text style={styles.registerButtonText}>Create Account</Text>
+                        <Ionicons name="arrow-forward" size={20} color="#fff" style={{ marginLeft: 8 }} />
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </>
+            )}
+          </Animated.View>
 
-          {isAadhaarVerified && (
-            <>
-              <Text style={styles.sectionTitle}>Account Credentials</Text>
-
-              <CustomInput
-                label="Username"
-                value={username}
-                onChangeText={setUsername}
-                placeholder="Choose a username"
-              />
-
-              <CustomInput
-                label="Password"
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Create a password (min 6 characters)"
-                secureTextEntry
-              />
-
-              <CustomInput
-                label="Confirm Password"
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                placeholder="Re-enter your password"
-                secureTextEntry
-              />
-
-              <TouchableOpacity 
-                style={[styles.submitButton, loading && styles.buttonDisabled]} 
-                onPress={handleRegister}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <>
-                    <Ionicons name="person-add" size={20} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={styles.submitButtonText}>Register</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </>
-          )}
-
-          <TouchableOpacity 
-            style={styles.backToLogin} 
+          {/* Sign-in link */}
+          <TouchableOpacity
+            style={styles.loginLink}
             onPress={() => navigation.goBack()}
           >
-            <Text style={styles.backToLoginText}>
-              Already have an account? Login
+            <Text style={styles.loginText}>
+              Already have an account?{' '}
+              <Text style={styles.loginBold}>Sign In</Text>
             </Text>
           </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#F8F9FA' 
+  container: { flex: 1 },
+
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 28,
+    paddingBottom: 48,
   },
-  contentContainer: {
-    padding: 24,
-    paddingTop: 30,
-    paddingBottom: 60,
-    minHeight: Dimensions.get('window').height,
+
+  // decorative background circles
+  circle: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  header: {
+
+  // back button
+  backButton: {
+    marginTop: Platform.OS === 'ios' ? 56 : 40,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 32,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 8,
-    marginTop: 12,
+
+  // header
+  header: {
+    marginTop: 20,
+    marginBottom: 24,
   },
-  subtitle: { 
-    fontSize: 15, 
-    color: '#666',
-    textAlign: 'center',
+  headerTitle: {
+    fontFamily: 'DonegalOne_400Regular',
+    fontSize: 32,
+    color: '#fff',
+    letterSpacing: 0.3,
   },
-  form: {
-    backgroundColor: '#fff',
-    padding: 28,
-    borderRadius: 16,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
+  headerSubtitle: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 6,
+    lineHeight: 22,
+  },
+
+  // form card
+  formCard: {
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: 'rgba(0,0,0,0.15)',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 1,
+    shadowRadius: 24,
+    elevation: 10,
+  },
+
+  // safety notice
+  safetyNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.successLight,
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 20,
+    gap: 10,
+  },
+  safetyNoticeText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#065F46',
+    lineHeight: 17,
+  },
+
+  // section heading
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 24,
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginTop: 28,
-    marginBottom: 20,
+    fontFamily: 'DonegalOne_400Regular',
+    fontSize: 16,
+    color: colors.text,
     letterSpacing: 0.3,
   },
-  pickerContainer: { 
-    marginBottom: 20 
+
+  // shared text input row
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    height: 52,
   },
-  label: { 
-    fontSize: 15, 
-    fontWeight: '600', 
-    marginBottom: 10, 
-    color: '#1a1a1a',
-    letterSpacing: 0.3,
+  inputFocused: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryFaded,
   },
-  pickerWrapper: { 
-    borderWidth: 1.5, 
-    borderColor: '#E0E0E0', 
-    borderRadius: 10, 
-    backgroundColor: '#FFFFFF',
-    overflow: 'hidden',
+  inputIcon: { marginRight: 12 },
+  input: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.text,
   },
-  picker: { 
+
+  // gender picker
+  pickerLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+    marginLeft: 2,
+  },
+  pickerLabelText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  picker: {
+    flex: 1,
+    color: colors.text,
     height: 50,
-    color: '#1a1a1a',
   },
+
+  // OTP info banner
   otpInfoBox: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#E3F2FD',
     padding: 14,
-    borderRadius: 10,
-    marginTop: 12,
-    marginBottom: 16,
+    borderRadius: 12,
+    marginBottom: 14,
     borderLeftWidth: 4,
     borderLeftColor: '#007AFF',
+    gap: 10,
   },
   otpInfoText: {
-    fontSize: 14,
-    color: '#007AFF',
-    marginLeft: 12,
     flex: 1,
+    fontSize: 13,
+    color: '#007AFF',
     fontWeight: '500',
+    lineHeight: 18,
   },
-  verifyButton: {
-    backgroundColor: '#FF9800',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-    flexDirection: 'row',
-    elevation: 2,
-    shadowColor: '#FF9800',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-  },
-  verifyButtonText: { 
-    color: '#fff', 
-    fontSize: 15, 
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  verifiedContainer: {
+
+  // verified banner
+  verifiedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E8F5E9',
+    backgroundColor: colors.successLight,
     padding: 14,
-    borderRadius: 10,
-    marginTop: 16,
+    borderRadius: 12,
+    marginTop: 4,
     borderLeftWidth: 4,
-    borderLeftColor: '#4CAF50',
+    borderLeftColor: colors.success,
+    gap: 10,
   },
-  verifiedText: { 
-    fontSize: 15, 
-    color: '#4CAF50', 
-    fontWeight: '700', 
-    marginLeft: 12,
+  verifiedText: {
+    fontFamily: 'DonegalOne_400Regular',
+    fontSize: 14,
+    color: colors.success,
     letterSpacing: 0.3,
   },
-  submitButton: {
-    backgroundColor: '#FF6B9D',
-    padding: 16,
-    borderRadius: 12,
+
+  // action buttons (verify / OTP)
+  actionButton: {
+    flexDirection: 'row',
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 28,
-    flexDirection: 'row',
-    elevation: 3,
-    shadowColor: '#FF6B9D',
-    shadowOffset: { width: 0, height: 4 },
+    marginBottom: 8,
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowRadius: 10,
+    elevation: 5,
   },
-  submitButtonText: { 
-    color: '#fff', 
-    fontSize: 16, 
-    fontWeight: '700',
-    letterSpacing: 0.5,
+  actionButtonText: {
+    fontFamily: 'DonegalOne_400Regular',
+    color: '#fff',
+    fontSize: 15,
+    letterSpacing: 0.3,
   },
-  buttonDisabled: {
-    backgroundColor: '#D0D0D0',
-    elevation: 0,
-    shadowOpacity: 0,
-    opacity: 1,
+
+  // final register button (slightly taller)
+  registerButton: {
+    height: 54,
+    marginTop: 8,
+    shadowColor: colors.primary,
   },
-  backToLogin: { 
-    marginTop: 24, 
+  registerButtonText: {
+    fontFamily: 'DonegalOne_400Regular',
+    color: '#fff',
+    fontSize: 16,
+    letterSpacing: 0.3,
+  },
+
+  // error text
+  errorText: {
+    color: colors.error,
+    fontSize: 12,
+    marginBottom: 8,
+    marginLeft: 4,
+    marginTop: -8,
+  },
+
+  // sign-in link
+  loginLink: {
+    marginTop: 24,
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingBottom: 20,
   },
-  backToLoginText: { 
-    fontSize: 15, 
-    color: '#FF6B9D',
-    fontWeight: '600',
+  loginText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 14,
+  },
+  loginBold: {
+    fontFamily: 'DonegalOne_400Regular',
+    color: '#fff',
   },
 });
-
-export default RegistrationScreen;

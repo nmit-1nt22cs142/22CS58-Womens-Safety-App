@@ -1,206 +1,313 @@
-import React, { useState } from "react";
-import { 
-  View, 
-  Text, 
-  TouchableOpacity, 
-  StyleSheet, 
+import React, { useState, useRef } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
   ActivityIndicator,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Dimensions
+  Dimensions,
+  StatusBar,
+  Animated,
 } from "react-native";
-import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import CustomInput from "../components/CustomInput";
 import { loginUser } from "../services/api";
+import { colors, gradients } from "../styles/colors";
+
+const { width, height } = Dimensions.get("window");
 
 const LoginScreen = ({ navigation }) => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // ── entrance animations (from file-1) ──────────────────────────────────────
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(40)).current;
+
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // ── original file-2 logic, untouched ──────────────────────────────────────
   const handleLogin = async () => {
-    // Validation
     if (!username || !password) {
       alert("All fields are required");
       return;
     }
-
     if (username.trim().length < 3) {
       alert("Username must be at least 3 characters");
       return;
     }
-
     try {
       setLoading(true);
-      console.log('Attempting login with username:', username);
-      
+      console.log("Attempting login with username:", username);
       const response = await loginUser(username, password);
-      console.log('Login response:', response);
+      console.log("Login response:", response);
 
       if (response.success) {
-        // Store token and user data in AsyncStorage
-        await AsyncStorage.setItem('authToken', response.token);
-        await AsyncStorage.setItem('user', JSON.stringify(response.user));
-        
-        console.log('✅ Token and user saved to AsyncStorage');
-        console.log('Navigating to Home...');
-        
-        navigation.replace("Home", { 
+        await AsyncStorage.setItem("authToken", response.token);
+        await AsyncStorage.setItem("user", JSON.stringify(response.user));
+        console.log("✅ Token and user saved to AsyncStorage");
+        console.log("Navigating to Home...");
+        navigation.replace("Home", {
           user: response.user,
-          token: response.token
+          token: response.token,
         });
       } else {
         alert(response.message || "Login failed");
       }
     } catch (err) {
-      console.error('Login error:', err);
+      console.error("Login error:", err);
       alert(err.message || "Login failed. Please try again.");
     } finally {
       setLoading(false);
     }
   };
+  // ──────────────────────────────────────────────────────────────────────────
+
+  const isDisabled = loading || !username || !password;
 
   return (
-    <KeyboardAvoidingView 
-      style={{ flex: 1 }} 
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      enabled={true}
-    >
-      <ScrollView 
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+
+      {/* Background gradient */}
+      <LinearGradient
+        colors={gradients.primary}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {/* Decorative circles */}
+      <View style={[styles.circle, styles.circle1]} />
+      <View style={[styles.circle, styles.circle2]} />
+      <View style={[styles.circle, styles.circle3]} />
+
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        enabled
       >
-        <View style={styles.header}>
-          <Ionicons name="lock-closed" size={48} color="#FF6B9D" />
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Login to secure your journey</Text>
-        </View>
-
-        <View style={styles.form}>
-          <CustomInput 
-            label="Username" 
-            value={username} 
-            onChangeText={setUsername}
-            placeholder="Enter your username"
-            autoCapitalize="none"
-          />
-          
-          <CustomInput 
-            label="Password" 
-            value={password} 
-            onChangeText={setPassword} 
-            secureTextEntry
-            placeholder="Enter your password"
-          />
-
-          <TouchableOpacity 
-            style={[styles.button, loading && styles.buttonDisabled]} 
-            onPress={handleLogin}
-            disabled={loading}
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* ── Header (file-1 look, file-2 copy) ── */}
+          <Animated.View
+            style={[
+              styles.header,
+              { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+            ]}
           >
-            {loading ? (
-              <ActivityIndicator color="#fff" size="large" />
-            ) : (
-              <>
-                <Ionicons name="log-in" size={20} color="#fff" style={{ marginRight: 8 }} />
-                <Text style={styles.btnText}>Login</Text>
-              </>
-            )}
-          </TouchableOpacity>
+            <View style={styles.logoContainer}>
+              <LinearGradient
+                colors={["rgba(255,255,255,0.25)", "rgba(255,255,255,0.1)"]}
+                style={styles.logoCircle}
+              >
+                <Ionicons name="lock-closed" size={48} color="#fff" />
+              </LinearGradient>
+            </View>
+            <Text style={styles.appName}>Aabha</Text>
+            <Text style={styles.tagline}>Your Safety Companion</Text>
+          </Animated.View>
 
-          <TouchableOpacity 
+          {/* ── Form Card ── */}
+          <Animated.View
+            style={[
+              styles.formCard,
+              { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+            ]}
+          >
+            <Text style={styles.formTitle}>Sign In</Text>
+            <Text style={styles.formSubtitle}>Enter your credentials to continue</Text>
+
+            {/* Username — still uses CustomInput from file-2 */}
+            <CustomInput
+              label="Username"
+              value={username}
+              onChangeText={setUsername}
+              placeholder="Enter your username"
+              autoCapitalize="none"
+            />
+
+            {/* Password */}
+            <CustomInput
+              label="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              placeholder="Enter your password"
+            />
+
+            {/* Sign In Button */}
+            <TouchableOpacity
+              onPress={handleLogin}
+              disabled={isDisabled}
+              activeOpacity={0.85}
+              style={{ marginTop: 28 }}
+            >
+              <LinearGradient
+                colors={isDisabled ? ["#ccc", "#bbb"] : gradients.primary}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.signInButton}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" size="large" />
+                ) : (
+                  <>
+                    <Ionicons
+                      name="log-in"
+                      size={20}
+                      color="#fff"
+                      style={{ marginRight: 8 }}
+                    />
+                    <Text style={styles.signInText}>Login</Text>
+                    <Ionicons
+                      name="arrow-forward"
+                      size={20}
+                      color="#fff"
+                      style={{ marginLeft: 8 }}
+                    />
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
+
+          {/* Register link */}
+          <TouchableOpacity
+            style={styles.registerLink}
             onPress={() => navigation.navigate("Registration")}
-            style={styles.linkContainer}
           >
-            <Text style={styles.link}>Don't have an account? </Text>
-            <Text style={styles.linkBold}>Register here</Text>
+            <Text style={styles.registerText}>
+              Don't have an account?{" "}
+              <Text style={styles.registerBold}>Register here</Text>
+            </Text>
           </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 };
 
+// ── Styles (file-1 design system) ─────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#F8F9FA',
+  container: { flex: 1 },
+
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingHorizontal: 28,
+    paddingBottom: 40,
   },
-  contentContainer: {
-    padding: 24,
-    paddingTop: 40,
-    paddingBottom: 60,
-    minHeight: Dimensions.get('window').height,
+
+  // Decorative circles
+  circle: {
+    position: "absolute",
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
+  circle1: { width: 200, height: 200, top: -60, right: -60 },
+  circle2: { width: 140, height: 140, top: height * 0.15, left: -50 },
+  circle3: { width: 100, height: 100, bottom: height * 0.15, right: -30 },
+
+  // Header
   header: {
-    alignItems: 'center',
-    marginBottom: 48,
+    alignItems: "center",
+    marginBottom: 36,
+    marginTop: 60,
   },
-  title: { 
-    fontSize: 32, 
-    fontWeight: "bold", 
-    color: '#1a1a1a',
-    marginBottom: 12,
-    marginTop: 16,
+  logoContainer: { marginBottom: 16 },
+  logoCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.2)",
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-  },
-  form: {
-    backgroundColor: '#fff',
-    padding: 28,
-    borderRadius: 16,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-  },
-  button: { 
-    backgroundColor: "#FF6B9D", 
-    padding: 16, 
-    borderRadius: 12, 
-    marginTop: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    elevation: 3,
-    shadowColor: '#FF6B9D',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
-  buttonDisabled: {
-    backgroundColor: "#D0D0D0",
-    elevation: 0,
-    shadowOpacity: 0,
-  },
-  btnText: { 
-    color: "#fff", 
+  appName: {
+    fontSize: 36,
     fontWeight: "700",
-    fontSize: 16,
+    color: "#fff",
+    letterSpacing: 1,
+  },
+  tagline: {
+    fontSize: 15,
+    color: "rgba(255,255,255,0.8)",
+    marginTop: 4,
     letterSpacing: 0.5,
   },
-  linkContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 24,
+
+  // Form Card
+  formCard: {
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderRadius: 24,
+    padding: 28,
+    shadowColor: "rgba(0,0,0,0.15)",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 1,
+    shadowRadius: 24,
+    elevation: 10,
   },
-  link: { 
-    color: "#666",
-    fontSize: 14,
-  },
-  linkBold: {
-    color: "#FF6B9D",
+  formTitle: {
+    fontSize: 24,
     fontWeight: "700",
-    fontSize: 14,
+    color: colors.text,
+    marginBottom: 4,
   },
+  formSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 20,
+  },
+
+  // Sign In Button
+  signInButton: {
+    flexDirection: "row",
+    height: 54,
+    borderRadius: 27,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  signInText: {
+    color: "#fff",
+    fontSize: 17,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+
+  // Register
+  registerLink: { marginTop: 20, alignItems: "center" },
+  registerText: { color: "rgba(255,255,255,0.85)", fontSize: 14 },
+  registerBold: { color: "#fff", fontWeight: "700" },
 });
 
 export default LoginScreen;
