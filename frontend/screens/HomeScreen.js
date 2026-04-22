@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  Animated, Dimensions, StatusBar, Platform, Modal,
-  TextInput, Alert,
+  Animated, Dimensions, StatusBar, Platform, Linking,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
+import * as Contacts from 'expo-contacts';
 import { LinearGradient } from 'expo-linear-gradient';
 import { io } from 'socket.io-client';
 import { triggerDangerAlert, startLiveLocation, stopLiveLocation } from '../services/api';
@@ -16,7 +17,6 @@ const SOCKET_URL = 'http://192.168.0.105:3000';
 
 const { width } = Dimensions.get('window');
 
-// ── Colour & gradient tokens (from c file) ────────────────────────────────
 const colors = {
   primary: '#FF9B69',
   primaryDark: '#E87D4A',
@@ -40,8 +40,9 @@ const gradients = {
   sos: ['#EF4444', '#DC2626'],
 };
 
+const AVATAR_COLORS = ['#F59E0B', '#6366F1', '#EC4899', '#8B5CF6', '#10B981', '#3B82F6', '#EF4444'];
+
 const HomeScreen = ({ navigation, route }) => {
-  // ── w file state ──────────────────────────────────────────────────────────
   const [user, setUser] = useState(null);
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
@@ -53,21 +54,20 @@ const HomeScreen = ({ navigation, route }) => {
   const sessionIdRef = useRef(null);
   const userIdRef = useRef(null);
 
-  // ── c file state ──────────────────────────────────────────────────────────
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0.3)).current;
 
   const [currentLocation, setCurrentLocation] = useState('Detecting location...');
   const [isSafe] = useState(true);
-  const [showContactModal, setShowContactModal] = useState(false);
-  const [newContactName, setNewContactName] = useState('');
   const [contacts, setContacts] = useState([]);
+  const [contactsPermission, setContactsPermission] = useState(null);
 
   useEffect(() => {
     loadUserData();
     startAnimations();
     initializeAppData();
+    checkContactsPermission();
     return () => { stopSharingCleanup(); };
   }, []);
 
@@ -107,21 +107,17 @@ const HomeScreen = ({ navigation, route }) => {
   };
 
   const initializeAppData = async () => {
+    // Load saved emergency contacts from AsyncStorage
     try {
       const saved = await AsyncStorage.getItem('aabha_contacts');
       if (saved) {
         setContacts(JSON.parse(saved));
-      } else {
-        const defaults = [
-          { name: 'Mom', initials: 'M', color: '#FF6B6B' },
-          { name: 'Dad', initials: 'D', color: '#3B82F6' },
-          { name: 'Friend', initials: 'A', color: '#10B981' },
-        ];
-        setContacts(defaults);
-        await AsyncStorage.setItem('aabha_contacts', JSON.stringify(defaults));
       }
-    } catch (e) { console.log('Contacts error:', e); }
+    } catch (e) {
+      console.log('Contacts load error:', e);
+    }
 
+    // Get current location
     try {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') { setCurrentLocation('Location permission denied'); return; }
@@ -133,36 +129,172 @@ const HomeScreen = ({ navigation, route }) => {
         const parts = [p.street, p.name, p.city].filter(Boolean);
         setCurrentLocation(parts.join(', ') || 'Location detected');
       }
-    } catch { setCurrentLocation('Could not detect location'); }
+    } catch {
+      setCurrentLocation('Could not detect location');
+    }
   };
 
-  const saveContacts = async (newContacts) => {
-    try { await AsyncStorage.setItem('aabha_contacts', JSON.stringify(newContacts)); }
-    catch (e) { console.log('Save contacts error:', e); }
+  // ── Contacts permission ───────────────────────────────────────────────────
+  const checkContactsPermission = async () => {
+    const { status } = await Contacts.getPermissionsAsync();
+    setContactsPermission(status);
   };
 
-  const addContact = async () => {
-    if (!newContactName.trim()) return;
-    const pool = ['#F59E0B', '#6366F1', '#EC4899', '#8B5CF6', '#10B981'];
+  const requestContactsPermission = async () => {
+    const { status } = await Contacts.requestPermissionsAsync();
+    setContactsPermission(status);
+    return status;
+  };
+
+  // ── Open device contacts picker ───────────────────────────────────────────
+  const handleAddContact = async () => {
+    let permission = contactsPermission;
+
+    if (permission !== 'granted') {
+      permission = await requestContactsPermission();
+    }
+
+    if (permission !== 'granted') {
+      Alert.alert(
+        'Permission Required',
+        'Aabha needs access to your contacts to add emergency contacts. Please enable it in Settings.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ]
+      );
+      return;
+    }
+
+    // Fetch all contacts with phone numbers
+    const { data } = await Contacts.getContactsAsync({
+      fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
+    });
+
+    const withPhones = data.filter(
+      (c) => c.name && c.phoneNumbers && c.phoneNumbers.length > 0
+    );
+
+    if (withPhones.length === 0) {
+      Alert.alert('No Contacts', 'No contacts with phone numbers found on your device.');
+      return;
+    }
+
+    // Build alert options (show up to 20 contacts in a scrollable picker via alert buttons)
+    // For a proper picker, we show a custom modal — handled below
+    showContactPicker(withPhones);
+  };
+
+  // ── Contact picker modal state ────────────────────────────────────────────
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [pickerContacts, setPickerContacts] = useState([]);
+  const [pickerSearch, setPickerSearch] = useState('');
+
+  const showContactPicker = (deviceContacts) => {
+    setPickerContacts(deviceContacts);
+    setPickerSearch('');
+    setPickerVisible(true);
+  };
+
+  const filteredPickerContacts = pickerContacts.filter((c) =>
+    c.name.toLowerCase().includes(pickerSearch.toLowerCase())
+  );
+
+  const selectContact = async (contact) => {
+    // Check if already added
+    const phone = contact.phoneNumbers[0].number.replace(/\s+/g, '');
+    const alreadyExists = contacts.some((c) => c.phone === phone);
+    if (alreadyExists) {
+      Alert.alert('Already Added', `${contact.name} is already in your emergency contacts.`);
+      setPickerVisible(false);
+      return;
+    }
+
+    const colorIndex = contacts.length % AVATAR_COLORS.length;
     const newContact = {
-      name: newContactName,
-      initials: newContactName.charAt(0).toUpperCase(),
-      color: pool[Math.floor(Math.random() * pool.length)],
+      id: `${contact.id || Date.now()}`,
+      name: contact.name,
+      phone,
+      initials: contact.name.charAt(0).toUpperCase(),
+      color: AVATAR_COLORS[colorIndex],
     };
+
     const updated = [...contacts, newContact];
     setContacts(updated);
     await saveContacts(updated);
-    setNewContactName('');
-    setShowContactModal(false);
+    setPickerVisible(false);
+
+    // Also save to DB if user is logged in
+    if (token && userIdRef.current) {
+      saveContactToDB(newContact);
+    }
   };
 
+  const saveContactToDB = async (contact) => {
+    try {
+      await fetch(`${SOCKET_URL}/api/emergency-contacts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: contact.name,
+          phone: contact.phone,
+        }),
+      });
+    } catch (err) {
+      console.log('DB save contact error:', err);
+    }
+  };
+
+  const saveContacts = async (newContacts) => {
+    try {
+      await AsyncStorage.setItem('aabha_contacts', JSON.stringify(newContacts));
+    } catch (e) {
+      console.log('Save contacts error:', e);
+    }
+  };
+
+  // ── Call a contact ────────────────────────────────────────────────────────
+  const handleContactPress = (contact) => {
+    if (!contact.phone) {
+      Alert.alert('No Phone Number', `No phone number saved for ${contact.name}.`);
+      return;
+    }
+    const phoneUrl = `tel:${contact.phone}`;
+    Linking.canOpenURL(phoneUrl)
+      .then((supported) => {
+        if (supported) {
+          Linking.openURL(phoneUrl);
+        } else {
+          Alert.alert('Error', 'Phone calls are not supported on this device.');
+        }
+      })
+      .catch(() => Alert.alert('Error', 'Could not open the phone app.'));
+  };
+
+  // ── Long press to remove ──────────────────────────────────────────────────
   const removeContact = async (index) => {
+    const contact = contacts[index];
     const updated = contacts.filter((_, i) => i !== index);
     setContacts(updated);
     await saveContacts(updated);
+
+    // Remove from DB
+    if (token && contact.id) {
+      try {
+        await fetch(`${SOCKET_URL}/api/emergency-contacts/${contact.id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch (err) {
+        console.log('DB remove contact error:', err);
+      }
+    }
   };
 
-  // ── DANGER / SOS — w file backend logic ──────────────────────────────────
+  // ── DANGER / SOS ──────────────────────────────────────────────────────────
   const handleDangerButton = () => {
     Alert.alert(
       '🚨 EMERGENCY ALERT',
@@ -190,7 +322,7 @@ const HomeScreen = ({ navigation, route }) => {
     );
   };
 
-  // ── LIVE LOCATION — START ─────────────────────────────────────────────────
+  // ── LIVE LOCATION ─────────────────────────────────────────────────────────
   const handleSendLocation = async () => {
     if (isSharingLocation) { handleStopSharing(); return; }
     try {
@@ -276,7 +408,7 @@ const HomeScreen = ({ navigation, route }) => {
 
   const quickActions = [
     { icon: isSharingLocation ? 'location' : 'location-outline', label: isSharingLocation ? `Sharing\n(${guardiansCount})` : 'Share\nLocation', color: '#3B82F6', bg: '#DBEAFE', onPress: handleSendLocation },
-    { icon: 'call-outline', label: 'Call\nHelpline', color: '#10B981', bg: '#D1FAE5', onPress: () => {} },
+    { icon: 'call-outline', label: 'Call\nHelpline', color: '#10B981', bg: '#D1FAE5', onPress: () => Linking.openURL('tel:181') },
     { icon: 'chatbubble-outline', label: 'Fake\nCall', color: '#8B5CF6', bg: '#EDE9FE', onPress: () => {} },
     { icon: 'alert-circle-outline', label: 'Alert\nGuardians', color: '#F59E0B', bg: '#FEF3C7', onPress: handleDangerButton },
   ];
@@ -287,6 +419,7 @@ const HomeScreen = ({ navigation, route }) => {
     { icon: 'car-outline', title: 'Taking a Ride?', desc: 'Share the vehicle details with your emergency contacts' },
   ];
 
+  // ── RENDER ─────────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
@@ -322,7 +455,7 @@ const HomeScreen = ({ navigation, route }) => {
           </LinearGradient>
         </Animated.View>
 
-        {/* SOS Button — triggers w file danger logic */}
+        {/* SOS Button */}
         <View style={styles.sosSection}>
           <Animated.View style={[styles.sosGlowRing, { opacity: glowAnim, transform: [{ scale: pulseAnim }] }]} />
           <Animated.View style={[styles.sosGlowRing2, {
@@ -353,36 +486,59 @@ const HomeScreen = ({ navigation, route }) => {
           ))}
         </View>
 
-        {/* Emergency Contacts — no guardian toggle */}
+        {/* ── Emergency Contacts ─────────────────────────────────────────────── */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Emergency Contacts</Text>
+          <Text style={styles.sectionHint}>Tap to call · Hold to remove</Text>
         </View>
+
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.contactsRow}>
           {contacts.map((contact, i) => (
             <TouchableOpacity
-              key={i} style={styles.contactItem} activeOpacity={0.7}
+              key={contact.id || i}
+              style={styles.contactItem}
+              activeOpacity={0.7}
+              onPress={() => handleContactPress(contact)}
               onLongPress={() =>
-                Alert.alert('Remove Contact', `Remove ${contact.name}?`, [
-                  { text: 'Cancel' },
-                  { text: 'Remove', onPress: () => removeContact(i), style: 'destructive' },
-                ])
+                Alert.alert(
+                  'Remove Contact',
+                  `Remove ${contact.name} from emergency contacts?`,
+                  [
+                    { text: 'Cancel' },
+                    { text: 'Remove', onPress: () => removeContact(i), style: 'destructive' },
+                  ]
+                )
               }
             >
               <View style={[styles.contactAvatar, { backgroundColor: contact.color }]}>
                 <Text style={styles.contactInitials}>{contact.initials}</Text>
               </View>
-              <Text style={styles.contactName}>{contact.name}</Text>
+              {/* Call indicator */}
+              <View style={styles.callBadge}>
+                <Ionicons name="call" size={10} color="#fff" />
+              </View>
+              <Text style={styles.contactName} numberOfLines={1}>{contact.name}</Text>
             </TouchableOpacity>
           ))}
-          <TouchableOpacity style={styles.contactItem} activeOpacity={0.7} onPress={() => setShowContactModal(true)}>
-            <View style={[styles.contactAvatar, { backgroundColor: '#F3F4F6', borderStyle: 'dashed', borderWidth: 2, borderColor: colors.border }]}>
-              <Ionicons name="add" size={24} color={colors.textLight} />
+
+          {/* Add button — opens device contacts */}
+          <TouchableOpacity style={styles.contactItem} activeOpacity={0.7} onPress={handleAddContact}>
+            <View style={[styles.contactAvatar, styles.addContactAvatar]}>
+              <Ionicons name="person-add-outline" size={22} color={colors.primary} />
             </View>
             <Text style={styles.contactName}>Add</Text>
           </TouchableOpacity>
         </ScrollView>
 
-        {/* Start Journey — w file logic, unchanged */}
+        {contacts.length === 0 && (
+          <View style={styles.emptyContacts}>
+            <Ionicons name="people-outline" size={32} color={colors.textLight} />
+            <Text style={styles.emptyContactsText}>No emergency contacts yet</Text>
+            <Text style={styles.emptyContactsSub}>Tap Add to pick from your phone contacts</Text>
+          </View>
+        )}
+
+        {/* Start Journey */}
         <TouchableOpacity
           style={styles.journeyButton}
           onPress={() => navigation.navigate('JourneyHistory')}
@@ -411,7 +567,11 @@ const HomeScreen = ({ navigation, route }) => {
         ))}
 
         {/* Helpline */}
-        <TouchableOpacity style={styles.helplineCard} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.helplineCard}
+          activeOpacity={0.7}
+          onPress={() => Linking.openURL('tel:181')}
+        >
           <LinearGradient colors={gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.helplineGradient}>
             <View>
               <Text style={styles.helplineTitle}>Women Helpline</Text>
@@ -426,34 +586,90 @@ const HomeScreen = ({ navigation, route }) => {
         <View style={{ height: 30 }} />
       </ScrollView>
 
-      {/* Add Contact Modal — guardian toggle removed as per instructions */}
-      <Modal visible={showContactModal} animationType="slide" transparent={true} onRequestClose={() => setShowContactModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Contact</Text>
-              <TouchableOpacity onPress={() => setShowContactModal(false)}>
-                <Ionicons name="close" size={24} color={colors.textSecondary} />
+      {/* ── Contact Picker Modal ───────────────────────────────────────────── */}
+      {pickerVisible && (
+        <View style={styles.pickerOverlay}>
+          <View style={styles.pickerSheet}>
+            {/* Handle */}
+            <View style={styles.pickerHandle} />
+
+            <View style={styles.pickerHeader}>
+              <Text style={styles.pickerTitle}>Choose a Contact</Text>
+              <TouchableOpacity onPress={() => setPickerVisible(false)} style={styles.pickerClose}>
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
-            <Text style={styles.modalLabel}>CONTACT NAME</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Enter name"
-              value={newContactName}
-              onChangeText={setNewContactName}
-            />
-            <TouchableOpacity style={styles.modalButton} onPress={addContact} activeOpacity={0.8}>
-              <LinearGradient colors={gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.modalButtonGradient}>
-                <Text style={styles.modalButtonText}>Add to Emergency List</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+
+            {/* Search */}
+            <View style={styles.searchBox}>
+              <Ionicons name="search-outline" size={18} color={colors.textLight} style={{ marginRight: 8 }} />
+              <SearchInput value={pickerSearch} onChangeText={setPickerSearch} />
+            </View>
+
+            <ScrollView style={styles.pickerList} showsVerticalScrollIndicator={false}>
+              {filteredPickerContacts.length === 0 ? (
+                <View style={styles.pickerEmpty}>
+                  <Text style={styles.pickerEmptyText}>No contacts found</Text>
+                </View>
+              ) : (
+                filteredPickerContacts.map((contact, i) => {
+                  const phone = contact.phoneNumbers?.[0]?.number || '';
+                  const initial = (contact.name || '?').charAt(0).toUpperCase();
+                  const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
+                  const alreadyAdded = contacts.some((c) => c.phone === phone.replace(/\s+/g, ''));
+                  return (
+                    <TouchableOpacity
+                      key={contact.id || i}
+                      style={[styles.pickerItem, alreadyAdded && styles.pickerItemAdded]}
+                      onPress={() => selectContact(contact)}
+                      activeOpacity={0.7}
+                      disabled={alreadyAdded}
+                    >
+                      <View style={[styles.pickerAvatar, { backgroundColor: alreadyAdded ? '#E5E7EB' : color }]}>
+                        <Text style={[styles.pickerAvatarText, alreadyAdded && { color: colors.textLight }]}>
+                          {initial}
+                        </Text>
+                      </View>
+                      <View style={styles.pickerInfo}>
+                        <Text style={[styles.pickerName, alreadyAdded && { color: colors.textLight }]}>
+                          {contact.name}
+                        </Text>
+                        <Text style={styles.pickerPhone}>{phone}</Text>
+                      </View>
+                      {alreadyAdded ? (
+                        <View style={styles.addedBadge}>
+                          <Ionicons name="checkmark" size={14} color={colors.success} />
+                          <Text style={styles.addedText}>Added</Text>
+                        </View>
+                      ) : (
+                        <Ionicons name="add-circle-outline" size={22} color={colors.primary} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+              <View style={{ height: 40 }} />
+            </ScrollView>
           </View>
         </View>
-      </Modal>
+      )}
     </View>
   );
 };
+
+// ── Inline search input component ────────────────────────────────────────────
+import { TextInput } from 'react-native';
+
+const SearchInput = ({ value, onChangeText }) => (
+  <TextInput
+    style={styles.searchTextInput}
+    placeholder="Search contacts..."
+    placeholderTextColor={colors.textLight}
+    value={value}
+    onChangeText={onChangeText}
+    autoCorrect={false}
+  />
+);
 
 export default HomeScreen;
 
@@ -494,17 +710,40 @@ const styles = StyleSheet.create({
 
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 14 },
   sectionTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
+  sectionHint: { fontSize: 11, color: colors.textLight, fontStyle: 'italic' },
 
   actionsGrid: { flexDirection: 'row', justifyContent: 'space-between' },
   actionCard: { width: (width - 72) / 4, alignItems: 'center' },
   actionIcon: { width: 56, height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   actionLabel: { fontSize: 11, color: colors.textSecondary, textAlign: 'center', lineHeight: 15, fontWeight: '500' },
 
+  // Contacts
   contactsRow: { paddingVertical: 4 },
-  contactItem: { alignItems: 'center', marginRight: 20 },
-  contactAvatar: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
+  contactItem: { alignItems: 'center', marginRight: 20, position: 'relative' },
+  contactAvatar: {
+    width: 56, height: 56, borderRadius: 28,
+    justifyContent: 'center', alignItems: 'center', marginBottom: 6,
+  },
+  addContactAvatar: {
+    backgroundColor: 'rgba(255,155,105,0.12)',
+    borderStyle: 'dashed', borderWidth: 2, borderColor: colors.primary,
+  },
   contactInitials: { fontSize: 20, fontWeight: '700', color: '#fff' },
-  contactName: { fontSize: 12, color: colors.textSecondary, fontWeight: '500' },
+  contactName: { fontSize: 12, color: colors.textSecondary, fontWeight: '500', maxWidth: 60, textAlign: 'center' },
+  callBadge: {
+    position: 'absolute', top: 0, right: -2,
+    width: 18, height: 18, borderRadius: 9,
+    backgroundColor: colors.success,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1.5, borderColor: colors.background,
+  },
+  emptyContacts: {
+    alignItems: 'center', paddingVertical: 20,
+    backgroundColor: colors.card, borderRadius: 16, marginBottom: 4,
+    gap: 4,
+  },
+  emptyContactsText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary, marginTop: 4 },
+  emptyContactsSub: { fontSize: 12, color: colors.textLight },
 
   journeyButton: { marginTop: 24, borderRadius: 18, overflow: 'hidden', elevation: 5 },
   journeyGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 18, gap: 10 },
@@ -526,16 +765,65 @@ const styles = StyleSheet.create({
   helplineNumber: { fontSize: 32, fontWeight: 'bold', color: '#fff', marginTop: 2 },
   helplineButton: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: {
-    backgroundColor: '#fff', borderTopLeftRadius: 30, borderTopRightRadius: 30,
-    padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+  // ── Contact Picker Modal ─────────────────────────────────────────────────
+  pickerOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
   },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 22, fontWeight: '700', color: colors.text },
-  modalLabel: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 8, letterSpacing: 0.5 },
-  modalInput: { backgroundColor: '#F3F4F6', borderRadius: 14, padding: 16, fontSize: 16, color: colors.text, marginBottom: 24 },
-  modalButton: { borderRadius: 28, overflow: 'hidden' },
-  modalButtonGradient: { paddingVertical: 16, alignItems: 'center' },
-  modalButtonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  pickerSheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    paddingTop: 12,
+    maxHeight: '85%',
+    paddingBottom: Platform.OS === 'ios' ? 34 : 16,
+  },
+  pickerHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: '#E5E7EB', alignSelf: 'center', marginBottom: 16,
+  },
+  pickerHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, marginBottom: 14,
+  },
+  pickerTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
+  pickerClose: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center',
+  },
+
+  // Search
+  searchBox: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#F3F4F6', borderRadius: 14,
+    marginHorizontal: 20, marginBottom: 12,
+    paddingHorizontal: 14, paddingVertical: 10,
+  },
+  searchTextInput: { flex: 1, fontSize: 15, color: colors.text, padding: 0 },
+
+  pickerList: { paddingHorizontal: 20 },
+  pickerItem: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+    gap: 12,
+  },
+  pickerItemAdded: { opacity: 0.6 },
+  pickerAvatar: {
+    width: 44, height: 44, borderRadius: 22,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  pickerAvatarText: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  pickerInfo: { flex: 1 },
+  pickerName: { fontSize: 15, fontWeight: '600', color: colors.text },
+  pickerPhone: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  addedBadge: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#D1FAE5', borderRadius: 10,
+    paddingHorizontal: 8, paddingVertical: 3, gap: 3,
+  },
+  addedText: { fontSize: 11, color: colors.success, fontWeight: '600' },
+  pickerEmpty: { alignItems: 'center', paddingVertical: 40 },
+  pickerEmptyText: { fontSize: 15, color: colors.textLight },
+
+  searchInput: { display: 'none' }, // unused placeholder
 });

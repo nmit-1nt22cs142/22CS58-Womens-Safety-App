@@ -2,10 +2,10 @@
   "name": "women-safety-community-backend",
   "version": "1.0.0",
   "description": "Community feature backend (MongoDB + Cloudinary) for Women Safety App",
-  "main": "src/index.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +17,8 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "mangodb": "^1.0.0",
+    "mongodb": "^7.2.0",
     "mongoose": "^9.3.1",
     "multer": "^2.1.1",
     "multer-storage-cloudinary": "^4.0.0"

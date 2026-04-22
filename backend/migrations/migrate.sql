@@ -235,7 +235,19 @@ INSERT IGNORE INTO sample_aadhaar_data (aadhaar_number, mobile_number) VALUES
   ('901234567890', '9876543218'),
   ('112233445566', '9876543219');
 
-
+CREATE TABLE IF NOT EXISTS emergency_contacts (
+  id           INT           NOT NULL AUTO_INCREMENT,
+  user_id      INT           NOT NULL,
+  name         VARCHAR(150)  NOT NULL,
+  phone        VARCHAR(20)   NOT NULL,
+  color        VARCHAR(10)   NOT NULL DEFAULT '#FF9B69' COMMENT 'Avatar hex color shown in UI',
+  created_at   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_user_phone (user_id, phone),          -- prevent duplicates per user
+  KEY idx_ec_user (user_id),
+  CONSTRAINT fk_ec_user FOREIGN KEY (user_id)
+    REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 -- ============================================================
 -- Done. All tables created and seed data inserted.
 -- ============================================================
