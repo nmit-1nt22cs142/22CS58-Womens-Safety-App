@@ -1,23 +1,51 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import {
+  View, Text, TouchableOpacity, StyleSheet, ScrollView,
+  Animated, Dimensions, StatusBar, Platform, Modal,
+  TextInput, Alert,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
+import { LinearGradient } from 'expo-linear-gradient';
 import { io } from 'socket.io-client';
 import { triggerDangerAlert, startLiveLocation, stopLiveLocation } from '../services/api';
 
 // ⚠️ Must match YOUR_COMPUTER_IP in api.js
 const SOCKET_URL = 'http://192.168.0.105:3000';
 
+const { width } = Dimensions.get('window');
+
+// ── Colour & gradient tokens (from c file) ────────────────────────────────
+const colors = {
+  primary: '#FF9B69',
+  primaryDark: '#E87D4A',
+  primaryLight: '#FFD6C2',
+  primaryFaded: 'rgba(255, 155, 105, 0.12)',
+  background: '#F5F1EB',
+  card: '#FFFFFF',
+  text: '#2D2D3A',
+  textSecondary: '#6B7280',
+  textLight: '#9CA3AF',
+  border: '#E8E0D8',
+  error: '#EF4444',
+  success: '#10B981',
+  sosRed: '#DC2626',
+  sosRedGlow: 'rgba(220, 38, 38, 0.3)',
+  shadowColor: 'rgba(45, 45, 58, 0.08)',
+};
+
+const gradients = {
+  primary: ['#FF9B69', '#FF6B6B'],
+  sos: ['#EF4444', '#DC2626'],
+};
+
 const HomeScreen = ({ navigation, route }) => {
+  // ── w file state ──────────────────────────────────────────────────────────
   const [user, setUser] = useState(null);
   const [token, setToken] = useState('');
-  const [userId, setUserId] = useState(null);
   const [loading, setLoading] = useState(false);
-
-  // Live location state
   const [isSharingLocation, setIsSharingLocation] = useState(false);
-  const [locationSessionId, setLocationSessionId] = useState(null);
   const [guardiansCount, setGuardiansCount] = useState(0);
 
   const socketRef = useRef(null);
@@ -25,12 +53,39 @@ const HomeScreen = ({ navigation, route }) => {
   const sessionIdRef = useRef(null);
   const userIdRef = useRef(null);
 
+  // ── c file state ──────────────────────────────────────────────────────────
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0.3)).current;
+
+  const [currentLocation, setCurrentLocation] = useState('Detecting location...');
+  const [isSafe] = useState(true);
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
+  const [contacts, setContacts] = useState([]);
+
   useEffect(() => {
     loadUserData();
-    return () => {
-      stopSharingCleanup();
-    };
+    startAnimations();
+    initializeAppData();
+    return () => { stopSharingCleanup(); };
   }, []);
+
+  const startAnimations = () => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.08, duration: 1200, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1200, useNativeDriver: true }),
+      ])
+    ).start();
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 0.8, duration: 1500, useNativeDriver: true }),
+        Animated.timing(glowAnim, { toValue: 0.3, duration: 1500, useNativeDriver: true }),
+      ])
+    ).start();
+    Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }).start();
+  };
 
   const loadUserData = async () => {
     try {
@@ -40,12 +95,10 @@ const HomeScreen = ({ navigation, route }) => {
         setToken(authToken);
         const parsed = JSON.parse(userData);
         setUser(parsed);
-        setUserId(parsed.id);
         userIdRef.current = parsed.id;
       } else if (route?.params?.user && route?.params?.token) {
         setUser(route.params.user);
         setToken(route.params.token);
-        setUserId(route.params.user.id);
         userIdRef.current = route.params.user.id;
       }
     } catch (error) {
@@ -53,7 +106,63 @@ const HomeScreen = ({ navigation, route }) => {
     }
   };
 
-  // ── DANGER BUTTON ────────────────────────────────────────
+  const initializeAppData = async () => {
+    try {
+      const saved = await AsyncStorage.getItem('aabha_contacts');
+      if (saved) {
+        setContacts(JSON.parse(saved));
+      } else {
+        const defaults = [
+          { name: 'Mom', initials: 'M', color: '#FF6B6B' },
+          { name: 'Dad', initials: 'D', color: '#3B82F6' },
+          { name: 'Friend', initials: 'A', color: '#10B981' },
+        ];
+        setContacts(defaults);
+        await AsyncStorage.setItem('aabha_contacts', JSON.stringify(defaults));
+      }
+    } catch (e) { console.log('Contacts error:', e); }
+
+    try {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') { setCurrentLocation('Location permission denied'); return; }
+      let loc = await Location.getLastKnownPositionAsync({});
+      if (!loc) loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const geo = await Location.reverseGeocodeAsync({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+      if (geo.length > 0) {
+        const p = geo[0];
+        const parts = [p.street, p.name, p.city].filter(Boolean);
+        setCurrentLocation(parts.join(', ') || 'Location detected');
+      }
+    } catch { setCurrentLocation('Could not detect location'); }
+  };
+
+  const saveContacts = async (newContacts) => {
+    try { await AsyncStorage.setItem('aabha_contacts', JSON.stringify(newContacts)); }
+    catch (e) { console.log('Save contacts error:', e); }
+  };
+
+  const addContact = async () => {
+    if (!newContactName.trim()) return;
+    const pool = ['#F59E0B', '#6366F1', '#EC4899', '#8B5CF6', '#10B981'];
+    const newContact = {
+      name: newContactName,
+      initials: newContactName.charAt(0).toUpperCase(),
+      color: pool[Math.floor(Math.random() * pool.length)],
+    };
+    const updated = [...contacts, newContact];
+    setContacts(updated);
+    await saveContacts(updated);
+    setNewContactName('');
+    setShowContactModal(false);
+  };
+
+  const removeContact = async (index) => {
+    const updated = contacts.filter((_, i) => i !== index);
+    setContacts(updated);
+    await saveContacts(updated);
+  };
+
+  // ── DANGER / SOS — w file backend logic ──────────────────────────────────
   const handleDangerButton = () => {
     Alert.alert(
       '🚨 EMERGENCY ALERT',
@@ -75,49 +184,36 @@ const HomeScreen = ({ navigation, route }) => {
             } finally {
               setLoading(false);
             }
-          }
-        }
+          },
+        },
       ]
     );
   };
 
-  // ── LIVE LOCATION — START ────────────────────────────────
+  // ── LIVE LOCATION — START ─────────────────────────────────────────────────
   const handleSendLocation = async () => {
-    if (isSharingLocation) {
-      handleStopSharing();
-      return;
-    }
-
+    if (isSharingLocation) { handleStopSharing(); return; }
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permission is required to share your location.');
+        Alert.alert('Permission Denied', 'Location permission is required.');
         return;
       }
-
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       const { latitude, longitude } = location.coords;
-
-      // Register session on backend (for REST fallback / guardian initial check)
       const response = await startLiveLocation(latitude, longitude, token);
       if (!response.success) return;
 
       sessionIdRef.current = response.sessionId;
-      setLocationSessionId(response.sessionId);
       setGuardiansCount(response.guardiansCount);
       setIsSharingLocation(true);
 
-      // Connect socket and join user's own room
       const socket = io(SOCKET_URL, { transports: ['websocket'], reconnection: true });
-
       socket.on('connect', () => {
-        console.log('🔌 HomeScreen socket connected');
         socket.emit('join_as_user', { userId: userIdRef.current });
       });
-
       socketRef.current = socket;
 
-      // Push location every 5 seconds via socket
       locationIntervalRef.current = setInterval(async () => {
         try {
           const updated = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
@@ -130,46 +226,34 @@ const HomeScreen = ({ navigation, route }) => {
               timestamp: new Date().toISOString(),
             });
           }
-        } catch (err) {
-          console.error('Location push error:', err);
-        }
+        } catch (err) { console.error('Location push error:', err); }
       }, 5000);
 
       Alert.alert(
         '📍 Live Location Active',
-        `Your location is being shared with ${response.guardiansCount} guardian(s) in real time.\n\nTap "Send Location" again to stop.`,
+        `Sharing with ${response.guardiansCount} guardian(s) in real time.\n\nTap "Share Location" again to stop.`,
         [{ text: 'OK' }]
       );
-
     } catch (error) {
       Alert.alert('Error', error.message || 'Failed to share location');
     }
   };
 
-  // ── LIVE LOCATION — STOP ─────────────────────────────────
   const handleStopSharing = () => {
-    Alert.alert(
-      'Stop Sharing',
-      'Stop sharing your live location with guardians?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Stop',
-          style: 'destructive',
-          onPress: async () => {
-            await stopSharingCleanup();
-            Alert.alert('Stopped', 'Live location sharing has been stopped.');
-          }
-        }
-      ]
-    );
+    Alert.alert('Stop Sharing', 'Stop sharing your live location with guardians?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Stop', style: 'destructive',
+        onPress: async () => {
+          await stopSharingCleanup();
+          Alert.alert('Stopped', 'Live location sharing has been stopped.');
+        },
+      },
+    ]);
   };
 
   const stopSharingCleanup = async () => {
-    if (locationIntervalRef.current) {
-      clearInterval(locationIntervalRef.current);
-      locationIntervalRef.current = null;
-    }
+    if (locationIntervalRef.current) { clearInterval(locationIntervalRef.current); locationIntervalRef.current = null; }
     if (socketRef.current) {
       socketRef.current.emit('stop_sharing', { userId: userIdRef.current });
       socketRef.current.disconnect();
@@ -180,158 +264,278 @@ const HomeScreen = ({ navigation, route }) => {
       sessionIdRef.current = null;
     }
     setIsSharingLocation(false);
-    setLocationSessionId(null);
     setGuardiansCount(0);
   };
 
+  const getGreeting = () => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good Morning';
+    if (h < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  };
+
+  const quickActions = [
+    { icon: isSharingLocation ? 'location' : 'location-outline', label: isSharingLocation ? `Sharing\n(${guardiansCount})` : 'Share\nLocation', color: '#3B82F6', bg: '#DBEAFE', onPress: handleSendLocation },
+    { icon: 'call-outline', label: 'Call\nHelpline', color: '#10B981', bg: '#D1FAE5', onPress: () => {} },
+    { icon: 'chatbubble-outline', label: 'Fake\nCall', color: '#8B5CF6', bg: '#EDE9FE', onPress: () => {} },
+    { icon: 'alert-circle-outline', label: 'Alert\nGuardians', color: '#F59E0B', bg: '#FEF3C7', onPress: handleDangerButton },
+  ];
+
+  const safetyTips = [
+    { icon: 'walk-outline', title: 'Walking Alone?', desc: 'Share your live location with a trusted contact' },
+    { icon: 'moon-outline', title: 'Late Night?', desc: "Enable auto-alert if you don't reach home by set time" },
+    { icon: 'car-outline', title: 'Taking a Ride?', desc: 'Share the vehicle details with your emergency contacts' },
+  ];
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
-      {/* HERO BANNER */}
-      <View style={styles.bannerCard}>
-        <Text style={styles.bannerTitleBig}>Help is one tap away</Text>
-        <Text style={styles.bannerTitleSmall}>Strong. Aware. Protected</Text>
-        {user && <Text style={styles.welcomeText}>Welcome, {user.name}!</Text>}
-      </View>
-
-      {/* EMERGENCY */}
-      <View style={styles.sectionHeaderRow}>
-        <Text style={styles.sectionTitle}>Emergency</Text>
-      </View>
-      <View style={styles.cardRow}>
-        <View style={[styles.bigCard, { backgroundColor: '#FF6B6B' }]}>
-          <Text style={styles.cardMainTitle}>Active Emergency</Text>
-          <Text style={styles.cardSubtitle}>Call 0-1-5 for emergencies.</Text>
-          <View style={styles.callButton}><Text style={styles.callButtonText}>0-1-5</Text></View>
-        </View>
-        <View style={[styles.bigCard, { backgroundColor: '#6BCB77' }]}>
-          <Text style={styles.cardMainTitle}>Ambulance</Text>
-          <Text style={styles.cardSubtitle}>In case of medical help.</Text>
-          <View style={styles.callButton}><Text style={styles.callButtonText}>1-1-2</Text></View>
-        </View>
-      </View>
-
-      {/* EXPLORE LIVESAFE */}
-      <Text style={styles.sectionTitle}>Explore LiveSafe</Text>
-      <View style={styles.iconRow}>
-        {[
-          { name: 'shield-outline', label: 'Police Stations' },
-          { name: 'medkit-outline', label: 'Hospitals' },
-          { name: 'bandage-outline', label: 'Pharmacies' },
-          { name: 'bus-outline', label: 'Bus Stations' },
-        ].map((item, index) => (
-          <View key={index} style={styles.iconContainer}>
-            <Ionicons name={item.name} size={28} color="#FF6B9D" />
-            <Text style={styles.iconLabel}>{item.label}</Text>
+        {/* Header */}
+        <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
+          <View>
+            <Text style={styles.greeting}>{getGreeting()} 👋</Text>
+            <Text style={styles.userName}>{user?.name || 'Welcome'}</Text>
           </View>
+          <TouchableOpacity style={styles.notifButton}>
+            <Ionicons name="notifications-outline" size={24} color={colors.text} />
+            <View style={styles.notifDot} />
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* Safety Status Card */}
+        <Animated.View style={[styles.statusCard, { opacity: fadeAnim }]}>
+          <LinearGradient
+            colors={isSafe ? ['#D1FAE5', '#ECFDF5'] : ['#FEE2E2', '#FEF2F2']}
+            style={[styles.statusGradient, !isSafe && { borderColor: '#FECACA' }]}
+          >
+            <View style={styles.statusRow}>
+              <View style={[styles.statusDot, !isSafe && { backgroundColor: colors.error }]} />
+              <Text style={[styles.statusText, !isSafe && { color: '#991B1B' }]}>
+                {isSafe ? 'You are in a safe zone' : 'Risk detected in current area'}
+              </Text>
+            </View>
+            <Text style={styles.statusLocation} numberOfLines={1}>
+              <Ionicons name="location" size={13} color={colors.textSecondary} /> {currentLocation}
+            </Text>
+          </LinearGradient>
+        </Animated.View>
+
+        {/* SOS Button — triggers w file danger logic */}
+        <View style={styles.sosSection}>
+          <Animated.View style={[styles.sosGlowRing, { opacity: glowAnim, transform: [{ scale: pulseAnim }] }]} />
+          <Animated.View style={[styles.sosGlowRing2, {
+            opacity: Animated.multiply(glowAnim, 0.5),
+            transform: [{ scale: Animated.multiply(pulseAnim, 1.15) }],
+          }]} />
+          <TouchableOpacity onPress={handleDangerButton} disabled={loading} activeOpacity={0.85}>
+            <LinearGradient colors={gradients.sos} style={styles.sosButton}>
+              <Text style={styles.sosText}>{loading ? '...' : 'SOS'}</Text>
+              <Text style={styles.sosSubtext}>Tap for Emergency</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+          <Text style={styles.sosHint}>Tap to send alert to all guardians</Text>
+        </View>
+
+        {/* Quick Actions */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+        </View>
+        <View style={styles.actionsGrid}>
+          {quickActions.map((action, i) => (
+            <TouchableOpacity key={i} style={styles.actionCard} onPress={action.onPress} activeOpacity={0.7}>
+              <View style={[styles.actionIcon, { backgroundColor: action.bg }]}>
+                <Ionicons name={action.icon} size={24} color={action.color} />
+              </View>
+              <Text style={styles.actionLabel}>{action.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Emergency Contacts — no guardian toggle */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Emergency Contacts</Text>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.contactsRow}>
+          {contacts.map((contact, i) => (
+            <TouchableOpacity
+              key={i} style={styles.contactItem} activeOpacity={0.7}
+              onLongPress={() =>
+                Alert.alert('Remove Contact', `Remove ${contact.name}?`, [
+                  { text: 'Cancel' },
+                  { text: 'Remove', onPress: () => removeContact(i), style: 'destructive' },
+                ])
+              }
+            >
+              <View style={[styles.contactAvatar, { backgroundColor: contact.color }]}>
+                <Text style={styles.contactInitials}>{contact.initials}</Text>
+              </View>
+              <Text style={styles.contactName}>{contact.name}</Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity style={styles.contactItem} activeOpacity={0.7} onPress={() => setShowContactModal(true)}>
+            <View style={[styles.contactAvatar, { backgroundColor: '#F3F4F6', borderStyle: 'dashed', borderWidth: 2, borderColor: colors.border }]}>
+              <Ionicons name="add" size={24} color={colors.textLight} />
+            </View>
+            <Text style={styles.contactName}>Add</Text>
+          </TouchableOpacity>
+        </ScrollView>
+
+        {/* Start Journey — w file logic, unchanged */}
+        <TouchableOpacity
+          style={styles.journeyButton}
+          onPress={() => navigation.navigate('JourneyHistory')}
+        >
+          <LinearGradient colors={gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.journeyGradient}>
+            <Ionicons name="navigate" size={22} color="#fff" />
+            <Text style={styles.journeyButtonText}>Start Journey</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {/* Safety Tips */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Safety Tips</Text>
+        </View>
+        {safetyTips.map((tip, i) => (
+          <TouchableOpacity key={i} style={styles.tipCard} activeOpacity={0.7}>
+            <View style={styles.tipIcon}>
+              <Ionicons name={tip.icon} size={22} color={colors.primary} />
+            </View>
+            <View style={styles.tipContent}>
+              <Text style={styles.tipTitle}>{tip.title}</Text>
+              <Text style={styles.tipDesc}>{tip.desc}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
+          </TouchableOpacity>
         ))}
-      </View>
 
-      {/* SEND LOCATION BUTTON */}
-      <TouchableOpacity
-        style={[styles.locationCard, isSharingLocation && styles.locationCardActive]}
-        onPress={handleSendLocation}
-        activeOpacity={0.8}
-      >
-        <View style={styles.locationIconWrapper}>
-          <Ionicons
-            name={isSharingLocation ? 'location' : 'location-outline'}
-            size={36}
-            color={isSharingLocation ? '#fff' : '#FF6B9D'}
-          />
-          {isSharingLocation && <View style={styles.pulsingDot} />}
-        </View>
-        <View style={styles.locationTextWrapper}>
-          <Text style={[styles.locationTitle, isSharingLocation && styles.locationTitleActive]}>
-            {isSharingLocation ? 'Sharing Live Location' : 'Send Location'}
-          </Text>
-          <Text style={[styles.locationSub, isSharingLocation && styles.locationSubActive]}>
-            {isSharingLocation
-              ? `Live • ${guardiansCount} guardian(s) tracking • real-time`
-              : 'Stream your live location to all guardians'}
-          </Text>
-        </View>
-        {isSharingLocation && (
-          <View style={styles.stopPill}>
-            <Text style={styles.stopPillText}>STOP</Text>
+        {/* Helpline */}
+        <TouchableOpacity style={styles.helplineCard} activeOpacity={0.7}>
+          <LinearGradient colors={gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.helplineGradient}>
+            <View>
+              <Text style={styles.helplineTitle}>Women Helpline</Text>
+              <Text style={styles.helplineNumber}>181</Text>
+            </View>
+            <View style={styles.helplineButton}>
+              <Ionicons name="call" size={24} color={colors.primary} />
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        <View style={{ height: 30 }} />
+      </ScrollView>
+
+      {/* Add Contact Modal — guardian toggle removed as per instructions */}
+      <Modal visible={showContactModal} animationType="slide" transparent={true} onRequestClose={() => setShowContactModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Contact</Text>
+              <TouchableOpacity onPress={() => setShowContactModal(false)}>
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalLabel}>CONTACT NAME</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Enter name"
+              value={newContactName}
+              onChangeText={setNewContactName}
+            />
+            <TouchableOpacity style={styles.modalButton} onPress={addContact} activeOpacity={0.8}>
+              <LinearGradient colors={gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.modalButtonGradient}>
+                <Text style={styles.modalButtonText}>Add to Emergency List</Text>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
-        )}
-      </TouchableOpacity>
-
-      {/* DANGER BUTTON */}
-      <TouchableOpacity
-        style={[styles.largeDangerButton, loading && styles.buttonDisabled]}
-        onPress={handleDangerButton}
-        disabled={loading}
-      >
-        <Text style={styles.largeDangerText}>{loading ? 'SENDING...' : 'DANGER'}</Text>
-      </TouchableOpacity>
-
-      {/* START JOURNEY */}
-      <TouchableOpacity
-        style={styles.routesButton}
-        onPress={() => navigation.navigate('JourneyHistory')}
-      >
-        <Ionicons name="navigate" size={24} color="#fff" />
-        <Text style={styles.routesButtonText}>Start Journey</Text>
-      </TouchableOpacity>
-
-    </ScrollView>
+        </View>
+      </Modal>
+    </View>
   );
 };
 
 export default HomeScreen;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F7F7F7' },
-  contentContainer: { padding: 20, paddingTop: 60, paddingBottom: 100 },
-  bannerCard: {
-    height: 120, borderRadius: 18, marginVertical: 10, backgroundColor: '#FAD0C4',
-    justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, elevation: 5,
+  container: { flex: 1, backgroundColor: colors.background },
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 120 },
+
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingTop: Platform.OS === 'ios' ? 56 : 44, marginBottom: 16,
   },
-  bannerTitleBig: { fontSize: 24, fontWeight: 'bold', color: '#000', textAlign: 'center' },
-  bannerTitleSmall: { fontSize: 16, fontWeight: '600', color: '#000', marginTop: 4, textAlign: 'center' },
-  welcomeText: { fontSize: 14, color: '#333', marginTop: 8, fontWeight: '500' },
-  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, marginBottom: 10 },
-  sectionTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
-  cardRow: { flexDirection: 'row', marginVertical: 10, gap: 10 },
-  bigCard: { flex: 1, padding: 16, borderRadius: 16, minHeight: 130 },
-  cardMainTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  cardSubtitle: { color: '#fff', fontSize: 12, marginTop: 5 },
-  callButton: { backgroundColor: '#fff', paddingVertical: 8, borderRadius: 10, marginTop: 15, alignItems: 'center' },
-  callButtonText: { color: '#000', fontSize: 16, fontWeight: 'bold' },
-  iconRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 15 },
-  iconContainer: { alignItems: 'center', width: 70 },
-  iconLabel: { marginTop: 5, fontSize: 11, color: '#444', textAlign: 'center' },
-  locationCard: {
-    flexDirection: 'row', backgroundColor: '#fff', padding: 16,
-    borderRadius: 18, alignItems: 'center', elevation: 5, marginTop: 10, gap: 12,
+  greeting: { fontSize: 14, color: colors.textSecondary },
+  userName: { fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 2 },
+  notifButton: {
+    width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card,
+    justifyContent: 'center', alignItems: 'center',
+    shadowColor: colors.shadowColor, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 4, elevation: 2,
   },
-  locationCardActive: { backgroundColor: '#FF6B9D', elevation: 8 },
-  locationIconWrapper: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  pulsingDot: {
-    position: 'absolute', top: 2, right: 2, width: 11, height: 11,
-    borderRadius: 6, backgroundColor: '#fff', borderWidth: 2, borderColor: '#FF6B9D',
+  notifDot: { position: 'absolute', top: 10, right: 12, width: 8, height: 8, borderRadius: 4, backgroundColor: colors.error },
+
+  statusCard: { marginBottom: 20 },
+  statusGradient: { borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#A7F3D0' },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  statusDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.success },
+  statusText: { fontSize: 15, fontWeight: '600', color: '#065F46' },
+  statusLocation: { fontSize: 13, color: colors.textSecondary, marginLeft: 18 },
+
+  sosSection: { alignItems: 'center', marginVertical: 20 },
+  sosGlowRing: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: colors.sosRedGlow },
+  sosGlowRing2: { position: 'absolute', width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(220,38,38,0.1)' },
+  sosButton: {
+    width: 140, height: 140, borderRadius: 70, justifyContent: 'center', alignItems: 'center',
+    shadowColor: colors.sosRed, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 16, elevation: 10,
   },
-  locationTextWrapper: { flex: 1 },
-  locationTitle: { fontSize: 16, fontWeight: '700', color: '#333' },
-  locationTitleActive: { color: '#fff' },
-  locationSub: { fontSize: 12, color: '#777', marginTop: 3 },
-  locationSubActive: { color: 'rgba(255,255,255,0.85)' },
-  stopPill: {
-    backgroundColor: 'rgba(255,255,255,0.25)', paddingHorizontal: 10,
-    paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)',
+  sosText: { fontSize: 36, fontWeight: 'bold', color: '#fff', letterSpacing: 4 },
+  sosSubtext: { fontSize: 10, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
+  sosHint: { fontSize: 12, color: colors.textLight, marginTop: 16 },
+
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 14 },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
+
+  actionsGrid: { flexDirection: 'row', justifyContent: 'space-between' },
+  actionCard: { width: (width - 72) / 4, alignItems: 'center' },
+  actionIcon: { width: 56, height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  actionLabel: { fontSize: 11, color: colors.textSecondary, textAlign: 'center', lineHeight: 15, fontWeight: '500' },
+
+  contactsRow: { paddingVertical: 4 },
+  contactItem: { alignItems: 'center', marginRight: 20 },
+  contactAvatar: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
+  contactInitials: { fontSize: 20, fontWeight: '700', color: '#fff' },
+  contactName: { fontSize: 12, color: colors.textSecondary, fontWeight: '500' },
+
+  journeyButton: { marginTop: 24, borderRadius: 18, overflow: 'hidden', elevation: 5 },
+  journeyGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 18, gap: 10 },
+  journeyButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+
+  tipCard: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card,
+    borderRadius: 16, padding: 16, marginBottom: 10,
+    shadowColor: colors.shadowColor, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 4, elevation: 2,
   },
-  stopPillText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  largeDangerButton: {
-    backgroundColor: '#FF4D4D', marginTop: 25, paddingVertical: 30,
-    borderRadius: 20, alignItems: 'center', justifyContent: 'center', width: '100%', elevation: 8,
+  tipIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,155,105,0.12)', justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+  tipContent: { flex: 1 },
+  tipTitle: { fontSize: 15, fontWeight: '600', color: colors.text, marginBottom: 2 },
+  tipDesc: { fontSize: 12, color: colors.textSecondary, lineHeight: 17 },
+
+  helplineCard: { marginTop: 16 },
+  helplineGradient: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderRadius: 20, padding: 24 },
+  helplineTitle: { fontSize: 14, color: 'rgba(255,255,255,0.85)' },
+  helplineNumber: { fontSize: 32, fontWeight: 'bold', color: '#fff', marginTop: 2 },
+  helplineButton: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: {
+    backgroundColor: '#fff', borderTopLeftRadius: 30, borderTopRightRadius: 30,
+    padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24,
   },
-  largeDangerText: { color: '#fff', fontSize: 28, fontWeight: 'bold', letterSpacing: 2 },
-  buttonDisabled: { backgroundColor: '#ccc', opacity: 0.7 },
-  routesButton: {
-    backgroundColor: '#007AFF', marginTop: 15, paddingVertical: 20, borderRadius: 20,
-    alignItems: 'center', justifyContent: 'center', flexDirection: 'row', width: '100%', elevation: 5, gap: 10,
-  },
-  routesButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 22, fontWeight: '700', color: colors.text },
+  modalLabel: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 8, letterSpacing: 0.5 },
+  modalInput: { backgroundColor: '#F3F4F6', borderRadius: 14, padding: 16, fontSize: 16, color: colors.text, marginBottom: 24 },
+  modalButton: { borderRadius: 28, overflow: 'hidden' },
+  modalButtonGradient: { paddingVertical: 16, alignItems: 'center' },
+  modalButtonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 });
