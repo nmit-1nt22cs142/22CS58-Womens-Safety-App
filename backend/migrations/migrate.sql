@@ -1,3 +1,4 @@
+
 -- ============================================================
 --  Women Safety App — Full Database Migration Script
 --  Run this once to create the database, all tables, and seed data.
@@ -238,3 +239,4 @@ INSERT IGNORE INTO sample_aadhaar_data (aadhaar_number, mobile_number) VALUES
 -- ============================================================
 -- Done. All tables created and seed data inserted.
 -- ============================================================
+

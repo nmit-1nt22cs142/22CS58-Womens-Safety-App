@@ -4,7 +4,6 @@ import { createStackNavigator } from "@react-navigation/stack";
 import LoginScreen from "../screens/LoginScreen";
 import RegistrationScreen from "../screens/RegistrationScreen";
 import HomeScreen from "../screens/HomeScreen";
-import CommunityScreen from "../screens/CommunityScreen";
 import GuardianScreen from "../screens/GuardianScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import StartJourneyScreen from "../screens/StartJourneyScreen";
@@ -13,6 +12,12 @@ import GuardianJourneyViewScreen from '../screens/GuardianJourneyViewScreen';
 import LiveLocationScreen from '../screens/LiveLocationScreen';
 import JourneyHistoryScreen from '../screens/JourneyHistoryScreen';
 import MainLayout from "../components/ui/MainLayout";
+
+// Community screens (integrated from community feature)
+import CommunityFeedScreen from "../screens/community/CommunityFeedScreen";
+import CreatePostScreen from "../screens/community/CreatePostScreen";
+import PostDetailScreen from "../screens/community/PostDetailScreen";
+import MyReportsScreen from "../screens/community/MyReportsScreen";
 
 const Stack = createStackNavigator();
 
@@ -39,9 +44,14 @@ export default function AppNavigator() {
 
       {/* MAIN APP SCREENS WITH BOTTOM NAV */}
       <Stack.Screen name="Home" component={withLayout(HomeScreen)} />
-      <Stack.Screen name="Community" component={withLayout(CommunityScreen)} />
       <Stack.Screen name="Guardian" component={withLayout(GuardianScreen)} />
       <Stack.Screen name="Settings" component={withLayout(SettingsScreen)} />
+
+      {/* COMMUNITY SCREENS — Feed uses bottom nav; sub-screens are full-screen */}
+      <Stack.Screen name="Community" component={withLayout(CommunityFeedScreen)} />
+      <Stack.Screen name="CreatePost" component={CreatePostScreen} />
+      <Stack.Screen name="PostDetail" component={PostDetailScreen} />
+      <Stack.Screen name="MyReports" component={MyReportsScreen} />
 
       {/* JOURNEY HISTORY — shown with bottom nav (Maps tab) */}
       <Stack.Screen name="JourneyHistory" component={withLayout(JourneyHistoryScreen)} />

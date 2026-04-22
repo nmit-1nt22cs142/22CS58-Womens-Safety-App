@@ -387,3 +387,46 @@ export const getActiveTrip = async (token) => {
 };
 
 export default api;
+// ============================================
+// Community API (MongoDB + Cloudinary backend)
+// Runs on a SEPARATE server at port 5000
+// Independent from the MySQL backend above
+// ============================================
+
+const getCommunityBaseURL = () => {
+  if (Platform.OS === 'web') {
+    return 'http://localhost:5000/api';
+  } else {
+    return `http://${YOUR_COMPUTER_IP}:5000/api`;
+  }
+};
+
+export const communityApi = axios.create({
+  baseURL: getCommunityBaseURL(),
+  timeout: 15000,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+communityApi.interceptors.request.use(
+  (config) => {
+    console.log(`📤 [Community API] ${config.method.toUpperCase()} ${config.url}`);
+    return config;
+  },
+  (error) => {
+    console.error('❌ [Community API] Request Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+communityApi.interceptors.response.use(
+  (response) => {
+    console.log(`✅ [Community API] Response: ${response.config.url}`);
+    return response;
+  },
+  (error) => {
+    console.error('❌ [Community API] Response Error:');
+    console.error('Status:', error.response?.status);
+    console.error('Data:', error.response?.data);
+    return Promise.reject(error);
+  }
+);
