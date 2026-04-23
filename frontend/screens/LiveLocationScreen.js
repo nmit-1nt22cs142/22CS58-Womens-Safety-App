@@ -9,7 +9,10 @@ import { io } from 'socket.io-client';
 import { getLiveLocation } from '../services/api';
 
 // ⚠️ Must match YOUR_COMPUTER_IP in api.js
-const SOCKET_URL = 'http://192.168.0.105:3000';
+
+//const SOCKET_URL = 'http://192.168.0.105:3000';
+const SOCKET_URL = 'http://10.232.197.52:3000'; // adarsh hotspot
+
 
 export default function LiveLocationScreen({ route, navigation }) {
   const { userId, userName, token } = route.params;

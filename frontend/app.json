@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "frontend",
-    "slug": "womensafetyapp",
+    "slug": "aabha-qjzj8offuzitrvq9n-9da",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -38,7 +38,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "67f352e5-6fce-4c39-b97a-9a61ccf3222a"
+        "projectId": "57839f8e-a661-4344-aa48-596e1eb97bfc"
       }
     },
     "plugins": [
@@ -51,6 +51,6 @@
         }
       ]
     ],
-    "owner": "adarsh08"
+    "owner": "adarshdev08"
   }
 }

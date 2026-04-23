@@ -13,7 +13,9 @@ import { io } from 'socket.io-client';
 import { triggerDangerAlert, startLiveLocation, stopLiveLocation } from '../services/api';
 
 // ⚠️ Must match YOUR_COMPUTER_IP in api.js
-const SOCKET_URL = 'http://192.168.0.105:3000';
+
+// const SOCKET_URL = 'http://192.168.0.105:3000';
+const SOCKET_URL = 'http://10.232.197.52:3000'; // adarsh hotspot
 
 const { width } = Dimensions.get('window');
 

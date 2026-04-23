@@ -1,10 +1,12 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
 
-const YOUR_COMPUTER_IP = '192.168.0.105'; // 👈 UPDATE THIS!
+const YOUR_COMPUTER_IP = '10.232.197.52'; // 👈 UPDATE THIS!
 // hostel: 172.16.9.62
 // harsha: 10.49.216.52
-// adarsh home:192.168.0.101
+// adarsh home:192.168.0.105
+// adarsh hotspot: 10.232.197.52
+
 const getBaseURL = () => {
   if (Platform.OS === 'web') {
     return 'http://localhost:3000/api';
